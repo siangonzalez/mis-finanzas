@@ -13,7 +13,7 @@ En el iPhone, ábrela en Safari, toca Compartir y luego "Agregar a pantalla de i
 - **Ajustes:** copia de seguridad (JSON), restaurar, exportar a Excel (CSV) y borrar todo.
 - Las categorías salen de la hoja "Drop Down" del Excel.
 
-Por ahora los datos se guardan solo en el navegador del dispositivo (IndexedDB). Todo el acceso a datos pasa por `src/data/db.ts`, para cambiarlo por un servidor (Supabase) en la fase 2.
+Los datos viven en el dispositivo (IndexedDB) y se sincronizan con tu cuenta de Google (ver más abajo). Todo el acceso a datos pasa por `src/data/db.ts`.
 
 ## Correr en el computador
 
@@ -49,6 +49,10 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 - **Cuotas atrasadas:** son las vencidas menos las pagadas. Un pago que cubre dos cuotas cuenta como dos.
 - **Alertas:** si en Revisar aceptas una transferencia a (o de) la persona de la deuda, se anota sola como pago (o abono).
 - **Nube:** las deudas se guardan en la hoja "Mis finanzas – Deudas" de tu Google Drive (ver integraciones). Los datos **no van en el código**.
+
+## Sincronización entre dispositivos
+
+Movimientos, Revisar, presupuesto, reglas y tarjetas se sincronizan entre tus dispositivos por medio del Apps Script (pestaña `datos` de tu hoja de Google). Ver `src/data/sync.ts`. Cada registro lleva `updatedAt`, y borrar deja una marca `deleted` para que el borrado también llegue al otro dispositivo. Si el mismo registro cambió en los dos lados, gana el cambio más reciente. Las deudas siguen sincronizándose por su lado (`debtSync.ts`).
 
 ## Próximas fases
 

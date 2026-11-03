@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import {
-  addDebtDisbursement, addDebtPayment, createDebt, db, getSetting, importDebtFile, saveMovement, type Debt,
+  activeCards, addDebtDisbursement, addDebtPayment, createDebt, db, getSetting, importDebtFile, saveMovement, type Debt,
 } from '../data/db'
 import { syncDebts, type SyncResult } from '../data/debtSync'
 import type { CardSummary } from '../import/statements'
@@ -41,7 +41,7 @@ function status(d: Debt, today: string) {
 
 export function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray(), [])
-  const cards = useLiveQuery(() => db.cards.toArray(), []) ?? []
+  const cards = useLiveQuery(activeCards, []) ?? []
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [sync, setSync] = useState<SyncResult | null>(null)

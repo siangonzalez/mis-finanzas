@@ -3,15 +3,23 @@ import type { Kind } from './categories'
 import type { DebtEvent, DebtTerms } from '../lib/debt'
 import type { CardSummary } from '../import/statements'
 
-// Todo vive en IndexedDB del navegador por ahora. Las funciones de este
-// archivo son la única puerta a los datos, para poder cambiar a un servidor
-// (Supabase) más adelante sin tocar las pantallas.
+// Todo vive en IndexedDB del dispositivo. Las funciones de este archivo son la
+// única puerta a los datos. Los movimientos, la bandeja, el presupuesto, las
+// reglas y las tarjetas se sincronizan entre tus dispositivos (ver sync.ts);
+// las deudas van por su lado (debtSync.ts).
 
 export type Recurrence = 'fijo' | 'ocasional'
 export type Source = 'manual' | 'gmail' | 'applepay' | 'sms' | 'extracto'
 
-export interface Movement {
-  id?: number
+// Campos para sincronizar: cuándo cambió el registro y si se borró.
+// Borrar deja una "lápida" (deleted) para que el borrado llegue al otro dispositivo.
+export interface Synced {
+  updatedAt?: number
+  deleted?: boolean
+}
+
+export interface Movement extends Synced {
+  id?: string
   date: string // YYYY-MM-DD
   kind: Kind
   category: string
@@ -23,7 +31,7 @@ export interface Movement {
   createdAt: number
 }
 
-export interface Budget {
+export interface Budget extends Synced {
   id: string // `${month}|${category}`
   month: string // YYYY-MM
   category: string
@@ -35,7 +43,7 @@ export type InboxStatus = 'pendiente' | 'aceptado' | 'ignorado' | 'duplicado' | 
 
 // Movimiento detectado automáticamente (correo, Apple Pay, alerta pegada),
 // esperando a que lo revises antes de entrar a tus cuentas.
-export interface InboxItem {
+export interface InboxItem extends Synced {
   id: string // id del correo, o uno generado
   source: Exclude<Source, 'manual'>
   bank: string
@@ -50,17 +58,19 @@ export interface InboxItem {
   subcategory: string
   status: InboxStatus
   duplicateOf?: string
-  movementId?: number
+  movementId?: string
   receivedAt: number
 }
 
-export interface Rule {
+export interface Rule extends Synced {
   id: string // `${kind}|${key}`
   key: string
   kind: Kind
   category: string
   subcategory: string
 }
+
+export type CardRecord = CardSummary & Synced
 
 export interface Setting {
   key: string
@@ -76,13 +86,13 @@ export interface Debt extends DebtTerms {
 }
 
 const db = new Dexie('finanzas') as Dexie & {
-  movements: EntityTable<Movement, 'id'>
+  movs: EntityTable<Movement, 'id'>
   budgets: EntityTable<Budget, 'id'>
   inbox: EntityTable<InboxItem, 'id'>
   rules: EntityTable<Rule, 'id'>
   settings: EntityTable<Setting, 'key'>
   debts: EntityTable<Debt, 'id'>
-  cards: EntityTable<CardSummary, 'id'>
+  cards: EntityTable<CardRecord, 'id'>
 }
 
 db.version(1).stores({
@@ -105,12 +115,98 @@ db.version(4).stores({
   cards: 'id',
 })
 
+export function newId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+// Para sincronizar entre dispositivos: los movimientos pasan de números
+// (1, 2, 3…, que chocarían entre dispositivos) a ids únicos, y todo lleva la
+// fecha del último cambio.
+db.version(5)
+  .stores({
+    movs: 'id, date, kind, category, updatedAt',
+    budgets: 'id, month, updatedAt',
+    inbox: 'id, status, date, updatedAt',
+    rules: 'id, updatedAt',
+    cards: 'id, updatedAt',
+  })
+  .upgrade(async (tx) => {
+    const now = Date.now()
+    const newIds = new Map<number, string>()
+    const old: (Movement & { id: number })[] = await tx.table('movements').toArray()
+    await tx.table('movs').bulkAdd(
+      old.map((m) => {
+        const id = newId()
+        newIds.set(m.id, id)
+        return { ...m, id, updatedAt: m.createdAt || now }
+      }),
+    )
+    await tx.table('inbox').toCollection().modify((i: InboxItem & { movementId?: unknown }) => {
+      i.updatedAt = i.receivedAt || now
+      if (typeof i.movementId === 'number') i.movementId = newIds.get(i.movementId)
+    })
+    for (const t of ['budgets', 'rules', 'cards']) {
+      await tx.table(t).toCollection().modify((r: Synced) => {
+        r.updatedAt = now
+      })
+    }
+  })
+
+db.version(6).stores({ movements: null })
+
+// Toda escritura marca la fecha del cambio, salvo cuando se está aplicando
+// lo que llega del otro dispositivo (que ya trae su propia fecha).
+export const SYNCED_TABLES = ['movs', 'budgets', 'inbox', 'rules', 'cards'] as const
+export type SyncedTable = (typeof SYNCED_TABLES)[number]
+let applyingRemote = false
+const changeListeners = new Set<() => void>()
+
+export function onLocalChange(fn: () => void) {
+  changeListeners.add(fn)
+  return () => {
+    changeListeners.delete(fn)
+  }
+}
+
+function notify() {
+  if (!applyingRemote) setTimeout(() => changeListeners.forEach((f) => f()), 0)
+}
+
+for (const t of SYNCED_TABLES) {
+  const table = db.table(t)
+  table.hook('creating', (_key, obj: Synced) => {
+    if (!applyingRemote || obj.updatedAt === undefined) obj.updatedAt = Date.now()
+    notify()
+  })
+  table.hook('updating', (mods: Partial<Synced>) => {
+    notify()
+    return applyingRemote && 'updatedAt' in mods ? undefined : { updatedAt: Date.now() }
+  })
+}
+
+export async function asRemote<T>(fn: () => Promise<T>) {
+  applyingRemote = true
+  try {
+    return await fn()
+  } finally {
+    applyingRemote = false
+  }
+}
+
+const alive = <T extends Synced>(r: T) => !r.deleted
+
 export async function saveCardSummary(c: CardSummary) {
   const prev = await db.cards.get(c.id)
   // Un extracto viejo no reemplaza uno más reciente.
-  if (prev && prev.cutDate > c.cutDate) return false
-  await db.cards.put(c)
+  if (prev && !prev.deleted && prev.cutDate > c.cutDate) return false
+  await db.cards.put({ ...c, deleted: false })
   return true
+}
+
+export async function activeCards() {
+  return (await db.cards.toArray()).filter(alive)
 }
 
 export async function getSetting(key: string) {
@@ -127,42 +223,44 @@ export function monthRange(month: string): [string, string] {
   return [`${month}-01`, `${month}-31`]
 }
 
-export function movementsInMonth(month: string) {
+export async function movementsInMonth(month: string) {
   const [from, to] = monthRange(month)
-  return db.movements.where('date').between(from, to, true, true).toArray()
+  return (await db.movs.where('date').between(from, to, true, true).toArray()).filter(alive)
 }
 
-export function movementsInYear(year: string) {
-  return db.movements.where('date').between(`${year}-01-01`, `${year}-12-31`, true, true).toArray()
+export async function movementsInYear(year: string) {
+  return (await db.movs.where('date').between(`${year}-01-01`, `${year}-12-31`, true, true).toArray()).filter(alive)
 }
 
-export function saveMovement(m: Movement) {
-  return db.movements.put(m)
+export async function saveMovement(m: Movement) {
+  const id = m.id ?? newId()
+  await db.movs.put({ ...m, id, deleted: false })
+  return id
 }
 
-export function deleteMovement(id: number) {
-  return db.movements.delete(id)
+export function deleteMovement(id: string) {
+  return db.movs.update(id, { deleted: true })
 }
 
-export function budgetsInMonth(month: string) {
-  return db.budgets.where('month').equals(month).toArray()
+export async function budgetsInMonth(month: string) {
+  return (await db.budgets.where('month').equals(month).toArray()).filter(alive)
 }
 
 export function saveBudget(month: string, category: string, amount: number) {
   const id = `${month}|${category}`
-  if (amount <= 0) return db.budgets.delete(id)
-  return db.budgets.put({ id, month, category, amount })
+  if (amount <= 0) return db.budgets.update(id, { deleted: true })
+  return db.budgets.put({ id, month, category, amount, deleted: false })
 }
 
 export async function copyBudgets(fromMonth: string, toMonth: string) {
   const previous = await budgetsInMonth(fromMonth)
-  await db.budgets.bulkPut(previous.map((b) => ({ ...b, id: `${toMonth}|${b.category}`, month: toMonth })))
+  await db.budgets.bulkPut(previous.map((b) => ({ ...b, id: `${toMonth}|${b.category}`, month: toMonth, deleted: false })))
   return previous.length
 }
 
 export interface Backup {
   app: 'finanzas'
-  version: 1 | 2
+  version: 1 | 2 | 3
   exportedAt: string
   movements: Movement[]
   budgets: Budget[]
@@ -175,36 +273,62 @@ export interface Backup {
 export async function exportBackup(): Promise<Backup> {
   return {
     app: 'finanzas',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
-    movements: await db.movements.toArray(),
-    budgets: await db.budgets.toArray(),
+    movements: (await db.movs.toArray()).filter(alive),
+    budgets: (await db.budgets.toArray()).filter(alive),
     inbox: await db.inbox.toArray(),
     rules: await db.rules.toArray(),
     debts: await db.debts.toArray(),
-    cards: await db.cards.toArray(),
+    cards: await activeCards(),
   }
+}
+
+const ALL = () => [db.movs, db.budgets, db.inbox, db.rules, db.debts, db.cards]
+
+// Marca todo como borrado (lápidas), para que en tus otros dispositivos también se borre.
+async function tombstoneAll() {
+  await db.movs.toCollection().modify({ deleted: true })
+  await db.budgets.toCollection().modify({ deleted: true })
+  await db.inbox.toCollection().modify({ deleted: true, status: 'ignorado' })
+  await db.rules.toCollection().modify({ deleted: true })
+  await db.cards.toCollection().modify({ deleted: true })
 }
 
 export async function importBackup(data: Backup) {
   if (data?.app !== 'finanzas' || !Array.isArray(data.movements)) {
     throw new Error('El archivo no es una copia de esta app.')
   }
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts, db.cards], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear(), db.cards.clear()])
-    // Se conservan los ids para que la bandeja siga apuntando a sus movimientos.
-    await db.movements.bulkPut(data.movements)
-    await db.budgets.bulkPut(data.budgets ?? [])
-    await db.inbox.bulkPut(data.inbox ?? [])
-    await db.rules.bulkPut(data.rules ?? [])
+  await db.transaction('rw', ALL(), async () => {
+    await tombstoneAll()
+    await db.debts.clear()
+    // Copias viejas tenían ids numéricos: se convierten a texto.
+    const ids = new Map<unknown, string>()
+    const fresh = <T extends object>(r: T) => ({ ...r, deleted: false, updatedAt: Date.now() })
+    await db.movs.bulkPut(
+      data.movements.map((m) => {
+        const id = typeof m.id === 'string' ? m.id : newId()
+        ids.set(m.id, id)
+        return { ...fresh(m), id }
+      }),
+    )
+    await db.budgets.bulkPut((data.budgets ?? []).map(fresh))
+    await db.inbox.bulkPut(
+      (data.inbox ?? []).map((i) => ({
+        ...fresh(i),
+        movementId: i.movementId === undefined ? undefined : (ids.get(i.movementId) ?? String(i.movementId)),
+      })),
+    )
+    await db.rules.bulkPut((data.rules ?? []).map(fresh))
     await db.debts.bulkPut(data.debts ?? [])
-    await db.cards.bulkPut(data.cards ?? [])
+    await db.cards.bulkPut((data.cards ?? []).map(fresh))
   })
 }
 
 export async function deleteAll() {
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts, db.cards], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear(), db.cards.clear()])
+  await db.transaction('rw', ALL(), async () => {
+    await tombstoneAll()
+    await db.debts.clear()
   })
 }
 
@@ -253,7 +377,7 @@ export interface NewDebt {
 }
 
 export async function createDebt(n: NewDebt) {
-  const base = n.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'deuda'
+  const base = n.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'deuda'
   let id = base
   for (let i = 2; await db.debts.get(id); i++) id = `${base}-${i}`
   const debt: Debt = {

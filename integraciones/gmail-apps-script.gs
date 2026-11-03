@@ -7,6 +7,9 @@
  *  - Deudas: guarda las deudas y sus pagos en la hoja "Mis finanzas – Deudas"
  *    de tu Drive, para que el iPhone, el computador y el tablero de Claude
  *    vean lo mismo.
+ *  - Sincronización: en la pestaña "datos" de esa misma hoja guarda tus
+ *    movimientos, la bandeja, el presupuesto, las reglas y las tarjetas, para
+ *    que todos tus dispositivos tengan lo mismo.
  * No envía correos ni comparte nada.
  *
  * Instalación: ver integraciones/README.md
@@ -26,6 +29,9 @@ var HEADERS = {
   deudas: ['id', 'nombre', 'direccion', 'palabras', 'cuota', 'dia', 'tasas'],
   prestamos: ['deuda', 'fecha', 'monto', 'nota'],
   pagos: ['id', 'deuda', 'fecha', 'monto', 'nota', 'origen', 'artefactoId', 'creado'],
+  // Un registro de la app por fila: tabla, id, cuándo cambió (según el
+  // dispositivo), cuándo llegó aquí (según el servidor) y el registro en JSON.
+  datos: ['tabla', 'clave', 'actualizado', 'servidor', 'json'],
 };
 
 /** Ejecútala una vez: crea la clave secreta y la muestra en el registro. */
@@ -69,6 +75,9 @@ function doPost(e) {
       case 'debts.addPayment':
         lock.waitLock(20000);
         return json({ ok: true, added: agregarPago(body.debtId, body.payment) });
+      case 'data.sync':
+        lock.waitLock(30000);
+        return json(Object.assign({ ok: true }, sincronizar(body.since, body.changes || [])));
       default:
         return json({ ok: false, error: 'Acción desconocida: ' + body.action });
     }
@@ -131,6 +140,8 @@ function libro() {
     if (sh.getLastRow() === 0) {
       sh.appendRow(HEADERS[name]);
       sh.setFrozenRows(1);
+      // Que Sheets no convierta ids ni JSON en fechas o números.
+      if (name === 'datos') sh.getRange('B:B').setNumberFormat('@');
     }
   });
   var extra = book.getSheetByName('Hoja 1') || book.getSheetByName('Sheet1');
@@ -209,6 +220,40 @@ function agregarPago(debtId, p) {
   var id = p.id || 'app-' + Date.now();
   sh.appendRow([id, debtId, p.date, p.amount, p.note || '', p.source || 'app', p.artifactId || '', new Date().toISOString()]);
   return true;
+}
+
+// ── Sincronización entre dispositivos ────────────────────────────────────
+
+// Guarda los cambios que manda un dispositivo (gana el más reciente) y le
+// devuelve todo lo que llegó desde su última sincronización.
+function sincronizar(since, changes) {
+  var sh = libro().getSheetByName('datos');
+  var values = sh.getDataRange().getValues();
+  var index = {};
+  for (var i = 1; i < values.length; i++) index[values[i][0] + '|' + values[i][1]] = i;
+
+  var now = Date.now();
+  var touched = false;
+  changes.forEach(function (c) {
+    if (!c || !c.table || !c.rec || c.rec.id === undefined) return;
+    var row = [c.table, String(c.rec.id), Number(c.rec.updatedAt) || 0, now, JSON.stringify(c.rec)];
+    var at = index[row[0] + '|' + row[1]];
+    if (at === undefined) {
+      values.push(row);
+      index[row[0] + '|' + row[1]] = values.length - 1;
+      touched = true;
+    } else if (Number(values[at][2]) <= row[2]) {
+      values[at] = row;
+      touched = true;
+    }
+  });
+  if (touched) sh.getRange(1, 1, values.length, HEADERS.datos.length).setValues(values);
+
+  var out = [];
+  for (var j = 1; j < values.length; j++) {
+    if (Number(values[j][3]) > (Number(since) || 0)) out.push({ table: values[j][0], rec: JSON.parse(values[j][4]) });
+  }
+  return { now: now, changes: out };
 }
 
 function json(obj) {

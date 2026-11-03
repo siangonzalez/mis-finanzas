@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, movementsInMonth, type Movement } from './data/db'
 import { handleDeepLink } from './import/deeplink'
+import { startAutoSync } from './data/sync'
 import { currentMonth, monthLabel, shiftMonth } from './lib/format'
 import { Summary } from './screens/Summary'
 import { Movements } from './screens/Movements'
@@ -49,6 +50,8 @@ export default function App() {
       /* sin almacenamiento: solo no recordamos la pestaña */
     }
   }
+
+  useEffect(() => startAutoSync(), [])
 
   useEffect(() => {
     const run = () =>

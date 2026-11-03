@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../data/db'
+import { activeCards, db } from '../data/db'
 import { overdueInstallments, simulateDebt } from '../lib/debt'
 import { money, todayISO } from '../lib/format'
 
@@ -7,7 +7,7 @@ import { money, todayISO } from '../lib/format'
 // pagos de tarjeta que están por vencer (o vencidos) según el último extracto.
 export function DebtReminder({ onOpen }: { onOpen: () => void }) {
   const debts = useLiveQuery(() => db.debts.toArray(), []) ?? []
-  const cards = useLiveQuery(() => db.cards.toArray(), []) ?? []
+  const cards = useLiveQuery(activeCards, []) ?? []
   const today = todayISO()
   const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000)
   const dueCards = cards.filter((c) => c.totalDebt >= 1_000 && c.dueDate && days(c.dueDate) <= 7)

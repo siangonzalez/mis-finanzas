@@ -31,7 +31,7 @@ function isTwin(a: InboxItem, b: InboxItem) {
 }
 
 async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, receivedAt: number): Promise<InboxItem> {
-  const rules = await db.rules.toArray()
+  const rules = (await db.rules.toArray()).filter((r) => !r.deleted)
   const s = (await debtFor(p.merchant, p.kind, p.amount)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
   return {
     id, source, bank: p.bank, role: p.role, kind: p.kind,
@@ -47,7 +47,7 @@ async function addWithDedupe(item: InboxItem) {
   // (por ejemplo, el pago a la tarjeta que sale en el extracto de Tuya).
   if (nearby.some((x) => x.status === 'propia' && x.bank !== item.bank && x.amount === item.amount && x.kind !== item.kind)) {
     item.status = 'propia'
-    await db.inbox.add(item)
+    await db.inbox.put({ ...item, deleted: false })
     return
   }
   // Un registro solo se empareja una vez por fuente: si ya tiene un repetido
@@ -64,7 +64,13 @@ async function addWithDedupe(item: InboxItem) {
   } else if (twin) {
     await db.inbox.update(twin.id, { status: 'duplicado', duplicateOf: item.id })
   }
-  await db.inbox.add(item)
+  await db.inbox.put({ ...item, deleted: false })
+}
+
+// Ya está en la bandeja (y no fue borrado con "Borrar todos los datos").
+async function isKnown(id: string) {
+  const x = await db.inbox.get(id)
+  return Boolean(x && !x.deleted)
 }
 
 function shiftDate(date: string, days: number) {
@@ -77,7 +83,7 @@ function shiftDate(date: string, days: number) {
 export async function ingest(raws: IncomingRaw[]) {
   let added = 0
   for (const r of raws) {
-    if (await db.inbox.get(r.id)) continue
+    if (await isKnown(r.id)) continue
     const parsed = parseAlert(r.text)
     if (!parsed) continue
     const item = await toItem(r.id, r.source, parsed, r.receivedAt ?? Date.now())
@@ -93,11 +99,11 @@ export async function ingestStatement(items: { id: string; parsed: ParsedAlert; 
   let own = 0
   let repeated = 0
   for (const it of items) {
-    if (await db.inbox.get(it.id)) continue
+    if (await isKnown(it.id)) continue
     const item = await toItem(it.id, 'extracto', it.parsed, Date.now())
     if (it.own) {
       item.status = 'propia'
-      await db.inbox.add(item)
+      await db.inbox.put({ ...item, deleted: false })
       own++
       // La otra punta (por ejemplo, "Transferiste … a Nequi" de Bancolombia)
       // también es entre tus cuentas.
@@ -118,7 +124,7 @@ export async function ingestStatement(items: { id: string; parsed: ParsedAlert; 
 }
 
 export async function ingestParsed(id: string, source: InboxItem['source'], parsed: ParsedAlert) {
-  if (await db.inbox.get(id)) return false
+  if (await isKnown(id)) return false
   const item = await toItem(id, source, parsed, Date.now())
   await addWithDedupe(item)
   return item.status === 'pendiente'

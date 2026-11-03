@@ -27,9 +27,15 @@ Solo responde cuando la app presenta tu clave secreta.
 8. En la app, entra a **Ajustes (⚙) → Cuenta de Google**, pega la URL y la clave, y toca **Probar conexión**.
 9. En **Deudas**, toca **Cargar archivo de deuda** y elige `deuda-juan-camilo.json`. La deuda se sube sola a la hoja. En cualquier otro dispositivo basta con conectar la cuenta de Google: la deuda baja sola.
 
+**Actualizar el script (por ejemplo, para la sincronización entre dispositivos):** en script.google.com, borra el código, pega el nuevo `gmail-apps-script.gs` y guarda. Luego ve a *Implementar → Gestionar implementaciones → ✏️ → Versión: Nueva versión → Implementar*. La URL y la clave siguen iguales. Esta actualización no pide permisos nuevos: la sincronización usa la misma hoja, en una pestaña nueva llamada **datos**, que se crea sola.
+
 **Si ya tenías instalada una versión anterior del script:** pega el código nuevo, ejecuta `configurarHoja` (acepta el permiso nuevo de hojas de cálculo) y luego ve a *Implementar → Gestionar implementaciones → ✏️ → Versión: Nueva versión → Implementar*. Así la URL sigue siendo la misma.
 
 Para agregar otro banco, súmalo a la lista `SENDERS` del script y crea una nueva versión de la misma forma. La app solo entiende los formatos que ya conoce; si llega otro, avísame con un ejemplo.
+
+### Sincronización entre tus dispositivos
+
+Con el script conectado, la app sincroniza sola los movimientos, Revisar, el presupuesto, las reglas de categorías y las tarjetas entre tu PC y tu iPhone. Lo hace al abrir la app, al volver a ella y unos segundos después de cada cambio. Todo queda en la pestaña **datos** de tu hoja, una fila por registro. Si cambias lo mismo en dos dispositivos, gana el cambio más reciente. Para un dispositivo nuevo, basta con pegar la URL y la clave en **⚙ → Cuenta de Google**: baja todo lo que ya tienes.
 
 ### Tablero compartido de Claude
 

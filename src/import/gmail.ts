@@ -1,5 +1,6 @@
 import { getSetting, setSetting } from '../data/db'
 import { callScript, isScriptConfigured } from '../data/remote'
+import { syncNow } from '../data/sync'
 import { ingest } from './inbox'
 
 // El Apps Script de tu cuenta de Google lee tus alertas bancarias y devuelve
@@ -16,6 +17,9 @@ export const isGmailConfigured = isScriptConfigured
 const PARSER_VERSION = 2
 
 export async function syncGmail(days?: number) {
+  // Primero lo de tus otros dispositivos, para no traer como pendiente algo
+  // que ya revisaste en otro lado.
+  await syncNow()
   const outdated = Number(await getSetting('gmail.parserVersion')) < PARSER_VERSION
   const last = outdated ? 0 : Number(await getSetting('gmail.lastSync')) || 0
   // La primera vez trae 60 días; después, desde la última sincronización (con un día de margen).

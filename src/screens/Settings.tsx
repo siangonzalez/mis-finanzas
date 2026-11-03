@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { deleteAll, exportBackup, getSetting, importBackup, setSetting } from '../data/db'
 import { syncGmail } from '../import/gmail'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { syncNow } from '../data/sync'
 import { todayISO } from '../lib/format'
 
 function download(name: string, content: string, type: string) {
@@ -56,6 +58,7 @@ export function Settings() {
   return (
     <>
       <GmailSettings />
+      <SyncSettings />
       <ShortcutSettings />
 
       <section className="card">
@@ -170,5 +173,36 @@ function ShortcutSettings() {
         Las partes entre corchetes son variables del atajo. Funciona cuando la app está publicada con HTTPS.
       </p>
     </details>
+  )
+}
+
+function SyncSettings() {
+  const at = useLiveQuery(() => getSetting('sync.at'), [])
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState('')
+  const last = Number(at)
+  const ago = last ? Math.round((Date.now() - last) / 60_000) : null
+
+  const run = async () => {
+    setBusy(true)
+    setStatus((await syncNow()).message)
+    setBusy(false)
+  }
+
+  return (
+    <section className="card">
+      <h3>Tus dispositivos</h3>
+      <p className="muted small">
+        Movimientos, Revisar, presupuesto, reglas y tarjetas se sincronizan solos entre tu PC y tu iPhone a través de tu
+        cuenta de Google (pestaña "datos" de tu hoja). Las deudas también, por su lado.
+      </p>
+      <p className="muted small" style={{ marginTop: 6 }}>
+        {ago === null ? 'Todavía no se ha sincronizado este dispositivo.' : ago < 1 ? 'Última sincronización: hace un momento.' : `Última sincronización: hace ${ago < 60 ? `${ago} min` : `${Math.round(ago / 60)} h`}.`}
+      </p>
+      <div className="stack">
+        <button className="ghost" disabled={busy} onClick={run}>{busy ? 'Sincronizando…' : 'Sincronizar ahora'}</button>
+      </div>
+      {status && <p className="pill">{status}</p>}
+    </section>
   )
 }
