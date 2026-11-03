@@ -266,3 +266,8 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
 .debt-balance { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .head-actions { display: flex; gap: 14px; }
 .debt-form > b { font-size: 15px; }
+.password-box { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 12px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--accent); }
+.password-box .row { align-items: stretch; }
+.password-box .settings-input { margin: 0; background: var(--card); }
+.password-box .primary { width: auto; padding: 10px 18px; }
+.password-box .link { align-self: flex-start; }

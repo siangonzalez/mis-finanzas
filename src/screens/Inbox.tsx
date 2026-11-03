@@ -4,7 +4,8 @@ import { categoriesFor, findCategory } from '../data/categories'
 import { db, type InboxItem } from '../data/db'
 import { syncGmail, isGmailConfigured } from '../import/gmail'
 import { accept, acceptAll, ignore, ingest, ingestStatement, restore, updateSuggestion } from '../import/inbox'
-import { readNequiDocx, statementItems } from '../import/statements'
+import { PdfPasswordError, readPdfLines } from '../import/pdf'
+import { readNequiDocx, rowsFromStatementLines, statementItems } from '../import/statements'
 import { dayLabel, money } from '../lib/format'
 
 const SOURCE_LABEL: Record<InboxItem['source'], string> = {
@@ -20,6 +21,11 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
   const ownTransfers = useLiveQuery(() => db.inbox.where('status').equals('propia').reverse().sortBy('date'), []) ?? []
   const [showOwn, setShowOwn] = useState(false)
   const statementRef = useRef<HTMLInputElement>(null)
+  // PDF con contraseña: los archivos que faltan y la contraseña que escribes.
+  // La contraseña vive solo en memoria mientras se leen los archivos.
+  const [needPassword, setNeedPassword] = useState<{ files: File[]; wrong: boolean } | null>(null)
+  const [password, setPassword] = useState('')
+  const totals = useRef({ rows: 0, added: 0, own: 0, repeated: 0 })
   const gmailReady = useLiveQuery(isGmailConfigured, [])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -45,25 +51,46 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     if (added) setPasted('')
   }
 
-  const loadStatements = async (files: FileList) => {
+  const readStatement = async (f: File, pass?: string) => {
+    const buf = await f.arrayBuffer()
+    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return rowsFromStatementLines(await readPdfLines(buf, pass))
+    return readNequiDocx(buf)
+  }
+
+  const loadStatements = async (files: File[], pass?: string) => {
     setBusy(true)
-    let added = 0, own = 0, repeated = 0, rows = 0
+    setMessage('')
+    const t = totals.current
     try {
-      for (const f of Array.from(files)) {
-        const r = readNequiDocx(await f.arrayBuffer())
-        rows += r.length
-        const res = await ingestStatement(statementItems(r))
-        added += res.added
-        own += res.own
-        repeated += res.repeated
+      for (let i = 0; i < files.length; i++) {
+        let rows
+        try {
+          rows = await readStatement(files[i], pass)
+        } catch (e) {
+          if (e instanceof PdfPasswordError) {
+            setNeedPassword({ files: files.slice(i), wrong: Boolean(pass) })
+            setPassword('')
+            return
+          }
+          throw new Error(`${files[i].name}: ${e instanceof Error ? e.message : 'no pude leerlo.'}`)
+        }
+        const res = await ingestStatement(statementItems(rows))
+        t.rows += rows.length
+        t.added += res.added
+        t.own += res.own
+        t.repeated += res.repeated
       }
+      setNeedPassword(null)
+      setPassword('')
       setMessage(
-        `Leí ${rows} movimientos: ${added} nuevos para revisar` +
-          (repeated ? `, ${repeated} que ya tenías por correo` : '') +
-          (own ? ` y ${own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.',
+        `Leí ${t.rows} movimientos: ${t.added} nuevos para revisar` +
+          (t.repeated ? `, ${t.repeated} que ya tenías por correo` : '') +
+          (t.own ? ` y ${t.own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.',
       )
+      totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No pude leer el extracto.')
+      totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } finally {
       setBusy(false)
     }
@@ -89,16 +116,47 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
           </>
         )}
         <div className="stack">
-          <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>Cargar extracto de Nequi (.docx)</button>
+          <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>
+            {busy ? 'Leyendo…' : 'Cargar extracto de Nequi (Word o PDF)'}
+          </button>
         </div>
+        {needPassword && (
+          <form
+            className="password-box"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (password) void loadStatements(needPassword.files, password)
+            }}
+          >
+            <span className="small">
+              {needPassword.wrong ? 'Esa contraseña no abre' : 'Escribe la contraseña de'} <b>{needPassword.files[0].name}</b>
+              {needPassword.wrong ? '. Prueba otra.' : ' (en Nequi suele ser tu número de cédula). Solo se usa para abrir el archivo aquí; no se guarda.'}
+            </span>
+            <div className="row">
+              <input className="settings-input" type="password" autoComplete="off" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button className="primary" disabled={!password || busy}>Abrir</button>
+            </div>
+            <button
+              type="button"
+              className="link"
+              onClick={() => {
+                setNeedPassword(null)
+                setPassword('')
+                totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
+              }}
+            >
+              Cancelar
+            </button>
+          </form>
+        )}
         <input
           ref={statementRef}
           type="file"
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           multiple
           hidden
           onChange={(e) => {
-            if (e.target.files?.length) void loadStatements(e.target.files)
+            if (e.target.files?.length) void loadStatements(Array.from(e.target.files))
             e.target.value = ''
           }}
         />

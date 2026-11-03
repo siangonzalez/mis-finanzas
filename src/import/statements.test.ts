@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { readNequiDocx, statementItems } from './statements'
+import { bitsToLines } from './pdf'
+import { readNequiDocx, rowsFromStatementLines, statementItems } from './statements'
 
 // Extracto inventado con el formato real de Nequi (tabla de 4 columnas).
 function docx(rows: string[][]) {
@@ -65,5 +66,39 @@ describe('extracto de Nequi', () => {
   it('rechaza un documento que no es de Nequi', () => {
     const z = zipSync({ 'word/document.xml': strToU8('<w:document>Contrato</w:document>') })
     expect(() => readNequiDocx(z.buffer as ArrayBuffer)).toThrow(/Nequi/)
+  })
+})
+
+describe('extracto de Nequi en PDF', () => {
+  it('arma líneas con el texto que está a la misma altura', () => {
+    const lines = bitsToLines([
+      { str: '$-30,000.00', x: 400, y: 500 },
+      { str: '24/08/2026', x: 40, y: 500.6 },
+      { str: 'ENVIO CON BRE-B A: Nicolás', x: 120, y: 499.5 },
+      { str: '$380.91', x: 500, y: 500 },
+      { str: 'Fecha del movimiento', x: 40, y: 520 },
+    ])
+    expect(lines).toEqual(['Fecha del movimiento', '24/08/2026 ENVIO CON BRE-B A: Nicolás $-30,000.00 $380.91'])
+  })
+
+  it('lee los movimientos y une descripciones de dos líneas', () => {
+    const rows = rowsFromStatementLines([
+      'Extracto de depósito de bajo monto de: NEQUI S.A.',
+      'Fecha del movimiento Descripción Valor Saldo',
+      '24/08/2026 ENVIO CON BRE-B A: Nicolás $-30,000.00 $380.91',
+      '24/08/2026 GRAVAMEN AL MOVIMIENTO $-120.00 $30,380.91',
+      '21/08/2026 De ANA MARIA $23,000.00 $244,939.33',
+      '20/08/2026 Para LUIS EDUARDO $-9,800.00 $221,939.33',
+      'PEREZ GOMEZ',
+      'Página 1 de 2',
+    ])
+    expect(rows).toHaveLength(4)
+    expect(rows[0]).toEqual({ date: '2026-08-24', description: 'ENVIO CON BRE-B A: Nicolás', amount: -30000, balance: 381 })
+    expect(rows[2].amount).toBe(23000)
+    expect(rows[3].description).toBe('Para LUIS EDUARDO PEREZ GOMEZ')
+  })
+
+  it('avisa si el PDF no es de Nequi', () => {
+    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/solo leo extractos de Nequi/)
   })
 })

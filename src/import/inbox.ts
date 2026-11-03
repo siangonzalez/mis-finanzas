@@ -43,8 +43,12 @@ async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, r
 
 async function addWithDedupe(item: InboxItem) {
   const nearby = await db.inbox.where('date').between(shiftDate(item.date, -1), shiftDate(item.date, 1), true, true).toArray()
+  // Un registro solo se empareja una vez por fuente: si ya tiene un repetido
+  // de esta misma fuente (por ejemplo, una línea del extracto), un segundo
+  // pago igual ese día es otro pago, no el mismo.
+  const alreadyPaired = (x: InboxItem) => nearby.some((d) => d.duplicateOf === x.id && d.source === item.source)
   const twin = nearby
-    .filter((x) => x.status !== 'ignorado' && x.status !== 'duplicado' && isTwin(x, item))
+    .filter((x) => (x.status === 'pendiente' || x.status === 'aceptado') && isTwin(x, item) && !alreadyPaired(x))
     .sort((a, b) => rank(b) - rank(a))[0]
 
   if (twin && (twin.status === 'aceptado' || rank(twin) >= rank(item))) {

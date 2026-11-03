@@ -45,6 +45,30 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
   return rows
 }
 
+// Líneas de texto de un extracto en PDF: "24/08/2026 ENVIO CON BRE-B A: Nicolás $-30,000.00 $380.91".
+// Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
+export function rowsFromStatementLines(lines: string[]): StatementRow[] {
+  if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
+    throw new Error('Por ahora solo leo extractos de Nequi. Mándame un ejemplo de este banco y lo agrego.')
+  }
+  const rows: StatementRow[] = []
+  const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
+  let last: StatementRow | null = null
+  for (const line of lines) {
+    const m = line.match(re)
+    if (m) {
+      last = { date: `${m[3]}-${m[2]}-${m[1]}`, description: m[4].trim(), amount: signed(m[5]), balance: signed(m[6]) }
+      rows.push(last)
+    } else if (last && line.length < 60 && !/^(Fecha|P[aá]gina|Saldo|Total|Los dep[oó]sitos|\d+\s*de\s*\d+)/i.test(line) && !/\$/.test(line)) {
+      // Continuación de una descripción larga.
+      last.description = `${last.description} ${line}`.trim()
+    } else {
+      last = null
+    }
+  }
+  return rows
+}
+
 export function readNequiDocx(file: ArrayBuffer): StatementRow[] {
   const files = unzipSync(new Uint8Array(file), { filter: (f) => f.name === 'word/document.xml' })
   const xml = files['word/document.xml']

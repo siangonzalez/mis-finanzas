@@ -34,9 +34,9 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 - **Reglas que aprenden:** cuando aceptas un comercio con una categoría, los siguientes del mismo comercio llegan con esa categoría.
 - **Gmail** con un Apps Script en tu propia cuenta, **Apple Pay** con el Atajo "Transacción" y **SMS** con el Atajo "Mensaje", o pegando la alerta. Los pasos están en [integraciones/README.md](integraciones/README.md).
 
-- **Extractos de Nequi (.docx):** en Revisar, "Cargar extracto de Nequi" lee el Word que descargas de Nequi. Trae lo que no llega por correo (pagos con QR, plata que te mandan de Nequi a Nequi, intereses), junta el 4x1000 del mes en un solo gasto, no repite lo que ya llegó por correo y deja aparte las **transferencias entre tus cuentas**, que no cuentan como gasto ni ingreso.
+- **Extractos de Nequi (Word o PDF):** en Revisar, "Cargar extracto de Nequi" lee el Word o el PDF que descargas de Nequi. Si el PDF tiene contraseña, la app la pide en pantalla y la usa solo para abrir el archivo en el dispositivo (no se guarda ni se envía). Trae lo que no llega por correo (pagos con QR, plata que te mandan de Nequi a Nequi, intereses), junta el 4x1000 del mes en un solo gasto, no repite lo que ya llegó por correo y deja aparte las **transferencias entre tus cuentas**, que no cuentan como gasto ni ingreso.
 
-Falta: importar los extractos PDF de las tarjetas de crédito (Davivienda, Nu, Tuya), que no mandan una alerta por cada compra.
+Falta: los extractos de las tarjetas de crédito (Davivienda, Nu, Tuya), que no mandan una alerta por cada compra. Se necesita un ejemplo de cada banco para leer su formato.
 
 ## Deudas
 
