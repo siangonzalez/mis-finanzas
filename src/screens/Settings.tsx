@@ -140,9 +140,9 @@ function GmailSettings() {
 
   return (
     <section className="card">
-      <h3>Gmail</h3>
+      <h3>Cuenta de Google</h3>
       <p className="muted small">
-        Trae las alertas de Bancolombia, Nequi, Davivienda y PSE desde un script que instalas en tu propia cuenta de
+        Trae las alertas de Bancolombia, Nequi, Davivienda y PSE, y guarda tus deudas en una hoja de tu Drive, con un script que instalas en tu propia cuenta de
         Google. Los pasos están en <code>integraciones/README.md</code>.
       </p>
       <div className="stack">

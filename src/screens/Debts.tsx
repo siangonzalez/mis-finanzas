@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useRef, useState } from 'react'
-import { addDebtPayment, db, importDebtFile, saveMovement, type Debt } from '../data/db'
+import { useEffect, useRef, useState } from 'react'
+import { addDebtPayment, db, getSetting, importDebtFile, saveMovement, type Debt } from '../data/db'
+import { syncDebts, type SyncResult } from '../data/debtSync'
 import { overdueInstallments, payoffProjection, simulateDebt } from '../lib/debt'
 import { money, moneyInput, monthLabel, parseMoney, todayISO } from '../lib/format'
 
@@ -13,11 +14,25 @@ export function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray(), [])
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
+  const [sync, setSync] = useState<SyncResult | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const sheetUrl = useLiveQuery(() => getSetting('debts.sheetUrl'), [])
+
+  const runSync = async () => {
+    setSyncing(true)
+    setSync(await syncDebts())
+    setSyncing(false)
+  }
+
+  useEffect(() => {
+    void runSync()
+  }, [])
 
   const importFile = async (file: File) => {
     try {
       const d = await importDebtFile(JSON.parse(await file.text()))
       setMessage(`Deuda con ${d.name} cargada.`)
+      void runSync()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No se pudo leer el archivo.')
     }
@@ -35,7 +50,15 @@ export function Debts() {
         </section>
       )}
 
-      {debts.map((d) => <DebtView key={d.id} debt={d} />)}
+      <div className={`sync-line ${sync && !sync.ok ? 'bad' : ''}`}>
+        <span>{syncing ? 'Sincronizando con Google…' : sync?.message ?? ''}</span>
+        <span>
+          {sheetUrl && <a className="link" href={sheetUrl} target="_blank" rel="noopener">Ver hoja</a>}
+          <button className="link" disabled={syncing} onClick={runSync}>↻</button>
+        </span>
+      </div>
+
+      {debts.map((d) => <DebtView key={d.id} debt={d} onChange={runSync} />)}
 
       <section className="card">
         <button className="ghost" onClick={() => fileRef.current?.click()}>
@@ -58,7 +81,7 @@ export function Debts() {
   )
 }
 
-function DebtView({ debt }: { debt: Debt }) {
+function DebtView({ debt, onChange }: { debt: Debt; onChange: () => void }) {
   const today = todayISO()
   const sim = simulateDebt(debt, today)
   const { overdue, next } = overdueInstallments(debt, today)
@@ -133,7 +156,15 @@ function DebtView({ debt }: { debt: Debt }) {
           <h3>Movimientos</h3>
           <button className="link" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : '+ Registrar pago'}</button>
         </div>
-        {showForm && <PaymentForm debt={debt} onDone={() => setShowForm(false)} />}
+        {showForm && (
+          <PaymentForm
+            debt={debt}
+            onDone={() => {
+              setShowForm(false)
+              onChange()
+            }}
+          />
+        )}
         <ul className="list-plain debt-rows">
           {(showAll ? rows : rows.slice(0, 8)).map((r, i) => (
             <li key={`${r.date}-${i}`}>
@@ -142,6 +173,7 @@ function DebtView({ debt }: { debt: Debt }) {
                   {r.type === 'prestamo' ? '▲ ' : '✓ '}
                   {r.type === 'prestamo' ? r.note || 'Préstamo' : 'Pago'}
                 </b>
+                {r.pending && <span className="muted small"> · sin subir</span>}
                 <span className="muted small"> · {shortDate(r.date)}{r.type === 'pago' && r.note ? ` · ${r.note}` : ''}</span>
                 {r.interestSincePrevious > 0 && <span className="muted small"> · +{money(r.interestSincePrevious)} interés</span>}
               </span>
@@ -168,7 +200,7 @@ function PaymentForm({ debt, onDone }: { debt: Debt; onDone: () => void }) {
 
   const save = async () => {
     if (!amount) return
-    await addDebtPayment(debt.id, { date, amount, note: note.trim() })
+    await addDebtPayment(debt.id, { date, amount, note: note.trim(), source: 'app' })
     if (asExpense) {
       await saveMovement({
         date, kind: debt.direction === 'debo' ? 'gasto' : 'ingreso',

@@ -6,6 +6,9 @@ export interface DebtEvent {
   date: string // YYYY-MM-DD
   amount: number
   note?: string
+  id?: string // pagos: identificador estable para sincronizar con la hoja y el tablero
+  source?: string // pagos: app, alerta, artefacto…
+  pending?: boolean // pagos: todavía no se ha subido a la hoja
 }
 
 export interface RatePeriod {

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Kind } from './categories'
-import type { DebtTerms } from '../lib/debt'
+import type { DebtEvent, DebtTerms } from '../lib/debt'
 
 // Todo vive en IndexedDB del navegador por ahora. Las funciones de este
 // archivo son la única puerta a los datos, para poder cambiar a un servidor
@@ -70,6 +70,7 @@ export interface Debt extends DebtTerms {
   name: string // con quién es la deuda
   direction: 'debo' | 'me-deben'
   keywords: string[] // nombres con que aparece en las alertas, para reconocer pagos
+  pendingUpload?: boolean // datos de la deuda aún no subidos a la hoja
 }
 
 const db = new Dexie('finanzas') as Dexie & {
@@ -203,20 +204,19 @@ export async function importDebtFile(data: unknown) {
     installment: d.deuda.installment ?? 0,
     dueDay: d.deuda.dueDay ?? 25,
     disbursements: d.deuda.disbursements,
-    payments: d.deuda.payments ?? [],
+    payments: (d.deuda.payments ?? []).map((p, i) => ({ ...p, id: p.id ?? `archivo-${i}`, pending: true })),
+    pendingUpload: true,
   }
   await db.debts.put(debt)
   return debt
 }
 
-export async function addDebtPayment(debtId: string, payment: { date: string; amount: number; note?: string }) {
+// Se guarda primero aquí y se marca para subir a la hoja (ver debtSync.ts).
+export async function addDebtPayment(debtId: string, payment: DebtEvent) {
   const debt = await db.debts.get(debtId)
-  if (!debt) return
-  await db.debts.update(debtId, { payments: [...debt.payments, payment] })
-}
-
-export async function removeDebtPayment(debtId: string, index: number) {
-  const debt = await db.debts.get(debtId)
-  if (!debt) return
-  await db.debts.update(debtId, { payments: debt.payments.filter((_, i) => i !== index) })
+  if (!debt) return false
+  const id = payment.id ?? `app-${Date.now()}`
+  if (debt.payments.some((p) => p.id === id)) return false
+  await db.debts.update(debtId, { payments: [...debt.payments, { ...payment, id, pending: true }] })
+  return true
 }

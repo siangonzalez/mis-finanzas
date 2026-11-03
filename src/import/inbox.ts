@@ -1,4 +1,5 @@
 import { addDebtPayment, db, saveMovement, type InboxItem, type Rule } from '../data/db'
+import { syncDebts } from '../data/debtSync'
 import { parseAlert, type ParsedAlert } from './parsers'
 import { merchantKey, suggestCategory } from './rules'
 
@@ -121,7 +122,10 @@ async function debtFor(merchant: string, kind: InboxItem['kind']) {
 
 async function linkToDebt(item: InboxItem) {
   const debt = await debtFor(item.merchant, item.kind)
-  if (debt) await addDebtPayment(debt.id, { date: item.date, amount: item.amount, note: `Desde ${item.bank}` })
+  if (!debt) return
+  const id = `alerta-${item.id}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-')
+  await addDebtPayment(debt.id, { id, date: item.date, amount: item.amount, note: `Desde ${item.bank}`, source: 'alerta' })
+  void syncDebts()
 }
 
 export async function acceptAll() {
