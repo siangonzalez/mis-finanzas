@@ -7,26 +7,27 @@ import { Summary } from './screens/Summary'
 import { Movements } from './screens/Movements'
 import { Inbox } from './screens/Inbox'
 import { Budget } from './screens/Budget'
+import { Debts } from './screens/Debts'
 import { Settings } from './screens/Settings'
 import { MovementSheet } from './components/MovementSheet'
 
-type Tab = 'resumen' | 'movimientos' | 'revisar' | 'presupuesto' | 'ajustes'
+type Tab = 'resumen' | 'movimientos' | 'revisar' | 'presupuesto' | 'deudas' | 'ajustes'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'resumen', label: 'Resumen', icon: '◎' },
   { id: 'movimientos', label: 'Movimientos', icon: '≡' },
   { id: 'revisar', label: 'Revisar', icon: '⇣' },
   { id: 'presupuesto', label: 'Presupuesto', icon: '◔' },
-  { id: 'ajustes', label: 'Ajustes', icon: '⚙' },
+  { id: 'deudas', label: 'Deudas', icon: '⇄' },
 ]
 
-// Sin mes en Revisar y Ajustes: muestran todo.
-const MONTHLESS: Tab[] = ['revisar', 'ajustes']
+// Sin mes en Revisar, Deudas y Ajustes: muestran todo.
+const MONTHLESS: Tab[] = ['revisar', 'deudas', 'ajustes']
 
 function readTab(): Tab {
   try {
     const t = localStorage.getItem('tab') as Tab | null
-    return t && TABS.some((x) => x.id === t) ? t : 'resumen'
+    return t && (t === 'ajustes' || TABS.some((x) => x.id === t)) ? t : 'resumen'
   } catch {
     return 'resumen'
   }
@@ -65,25 +66,36 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Mis finanzas</h1>
-        {!MONTHLESS.includes(tab) && (
-          <div className="month-picker">
-            <button aria-label="Mes anterior" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
-            <span>{monthLabel(month)}</span>
-            <button aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
-          </div>
-        )}
+        <h1>{tab === 'ajustes' ? 'Ajustes' : 'Mis finanzas'}</h1>
+        <div className="topbar-right">
+          {!MONTHLESS.includes(tab) && (
+            <div className="month-picker">
+              <button aria-label="Mes anterior" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+              <span>{monthLabel(month)}</span>
+              <button aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+            </div>
+          )}
+          <button
+            className={`gear ${tab === 'ajustes' ? 'on' : ''}`}
+            aria-label="Ajustes"
+            onClick={() => setTab(tab === 'ajustes' ? 'resumen' : 'ajustes')}
+          >
+            ⚙
+          </button>
+        </div>
       </header>
 
       <main className="content">
         {movements === undefined ? null : tab === 'resumen' ? (
-          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} />
+          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} onOpenDebts={() => setTab('deudas')} />
         ) : tab === 'movimientos' ? (
           <Movements movements={movements} onEdit={setEditing} />
         ) : tab === 'revisar' ? (
           <Inbox onGoToSettings={() => setTab('ajustes')} />
         ) : tab === 'presupuesto' ? (
           <Budget month={month} movements={movements} />
+        ) : tab === 'deudas' ? (
+          <Debts />
         ) : (
           <Settings />
         )}

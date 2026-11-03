@@ -1,3 +1,4 @@
+import { DebtReminder } from '../components/DebtReminder'
 import { findCategory } from '../data/categories'
 import type { Movement } from '../data/db'
 import { currentMonth, daysInMonth, money } from '../lib/format'
@@ -7,19 +8,23 @@ interface Props {
   month: string
   movements: Movement[]
   onAdd: () => void
+  onOpenDebts: () => void
 }
 
-export function Summary({ month, movements, onAdd }: Props) {
+export function Summary({ month, movements, onAdd, onOpenDebts }: Props) {
   const s = monthStats(movements)
 
   if (movements.length === 0) {
     return (
+      <>
+      <DebtReminder onOpen={onOpenDebts} />
       <section className="empty">
         <p className="big-emoji">🐷</p>
         <h2>Organiza la casa</h2>
         <p>Anota tu primer ingreso o gasto de este mes. Como dice el libro: como administras lo poco, así vas a administrar lo mucho.</p>
         <button className="primary" onClick={onAdd}>Agregar movimiento</button>
       </section>
+      </>
     )
   }
 
@@ -44,6 +49,8 @@ export function Summary({ month, movements, onAdd }: Props) {
         </p>
         {perDay > 0 && <p className="pill">Puedes gastar {money(perDay)} al día por {daysLeft} días</p>}
       </section>
+
+      <DebtReminder onOpen={onOpenDebts} />
 
       <section className="grid2">
         <div className="card stat">

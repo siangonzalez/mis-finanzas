@@ -36,6 +36,12 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 
 Falta: importar los extractos PDF de las tarjetas de crédito (Davivienda, Nu, Tuya), que no mandan una alerta por cada compra.
 
+## Deudas
+
+- **Pestaña Deudas:** saldo de hoy con interés compuesto diario y tasas EA que cambian en el tiempo, cuotas vencidas, intereses causados, gráfica del saldo y "¿cuándo terminas?" con la cuota que quieras probar.
+- **Registrar pago** desde la deuda (opcionalmente también como gasto del mes). Si aceptas en Revisar una transferencia a la persona de la deuda, el pago se anota solo.
+- Los datos de cada deuda **no van en el código**: se cargan con un archivo `.json` (botón "Cargar archivo de deuda") y quedan guardados solo en el dispositivo.
+
 ## Próximas fases
 
 3. Metas de ahorro, patrimonio, alertas de pagos y TRM.

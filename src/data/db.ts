@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Kind } from './categories'
+import type { DebtTerms } from '../lib/debt'
 
 // Todo vive en IndexedDB del navegador por ahora. Las funciones de este
 // archivo son la única puerta a los datos, para poder cambiar a un servidor
@@ -64,12 +65,20 @@ export interface Setting {
   value: string
 }
 
+export interface Debt extends DebtTerms {
+  id: string
+  name: string // con quién es la deuda
+  direction: 'debo' | 'me-deben'
+  keywords: string[] // nombres con que aparece en las alertas, para reconocer pagos
+}
+
 const db = new Dexie('finanzas') as Dexie & {
   movements: EntityTable<Movement, 'id'>
   budgets: EntityTable<Budget, 'id'>
   inbox: EntityTable<InboxItem, 'id'>
   rules: EntityTable<Rule, 'id'>
   settings: EntityTable<Setting, 'key'>
+  debts: EntityTable<Debt, 'id'>
 }
 
 db.version(1).stores({
@@ -81,6 +90,10 @@ db.version(2).stores({
   inbox: 'id, status, date',
   rules: 'id',
   settings: 'key',
+})
+
+db.version(3).stores({
+  debts: 'id',
 })
 
 export async function getSetting(key: string) {
@@ -138,6 +151,7 @@ export interface Backup {
   budgets: Budget[]
   inbox?: InboxItem[]
   rules?: Rule[]
+  debts?: Debt[]
 }
 
 export async function exportBackup(): Promise<Backup> {
@@ -149,6 +163,7 @@ export async function exportBackup(): Promise<Backup> {
     budgets: await db.budgets.toArray(),
     inbox: await db.inbox.toArray(),
     rules: await db.rules.toArray(),
+    debts: await db.debts.toArray(),
   }
 }
 
@@ -156,18 +171,52 @@ export async function importBackup(data: Backup) {
   if (data?.app !== 'finanzas' || !Array.isArray(data.movements)) {
     throw new Error('El archivo no es una copia de esta app.')
   }
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear()])
+  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts], async () => {
+    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear()])
     // Se conservan los ids para que la bandeja siga apuntando a sus movimientos.
     await db.movements.bulkPut(data.movements)
     await db.budgets.bulkPut(data.budgets ?? [])
     await db.inbox.bulkPut(data.inbox ?? [])
     await db.rules.bulkPut(data.rules ?? [])
+    await db.debts.bulkPut(data.debts ?? [])
   })
 }
 
 export async function deleteAll() {
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear()])
+  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts], async () => {
+    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear()])
   })
+}
+
+// Archivo con una sola deuda (por ejemplo, la exportada del tablero de Claude).
+export async function importDebtFile(data: unknown) {
+  const d = (data as { tipo?: string; deuda?: Omit<Debt, 'id'> & { id?: string } })
+  if (d?.tipo !== 'deuda' || !d.deuda?.name || !Array.isArray(d.deuda.disbursements)) {
+    throw new Error('El archivo no es una deuda de esta app.')
+  }
+  const debt: Debt = {
+    id: d.deuda.id ?? d.deuda.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    name: d.deuda.name,
+    direction: d.deuda.direction ?? 'debo',
+    keywords: d.deuda.keywords ?? [d.deuda.name.toUpperCase()],
+    rates: d.deuda.rates ?? [],
+    installment: d.deuda.installment ?? 0,
+    dueDay: d.deuda.dueDay ?? 25,
+    disbursements: d.deuda.disbursements,
+    payments: d.deuda.payments ?? [],
+  }
+  await db.debts.put(debt)
+  return debt
+}
+
+export async function addDebtPayment(debtId: string, payment: { date: string; amount: number; note?: string }) {
+  const debt = await db.debts.get(debtId)
+  if (!debt) return
+  await db.debts.update(debtId, { payments: [...debt.payments, payment] })
+}
+
+export async function removeDebtPayment(debtId: string, index: number) {
+  const debt = await db.debts.get(debtId)
+  if (!debt) return
+  await db.debts.update(debtId, { payments: debt.payments.filter((_, i) => i !== index) })
 }

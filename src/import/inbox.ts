@@ -1,4 +1,4 @@
-import { db, saveMovement, type InboxItem, type Rule } from '../data/db'
+import { addDebtPayment, db, saveMovement, type InboxItem, type Rule } from '../data/db'
 import { parseAlert, type ParsedAlert } from './parsers'
 import { merchantKey, suggestCategory } from './rules'
 
@@ -31,7 +31,7 @@ function isTwin(a: InboxItem, b: InboxItem) {
 
 async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, receivedAt: number): Promise<InboxItem> {
   const rules = await db.rules.toArray()
-  const s = suggestCategory(p.merchant, p.kind, rules)
+  const s = (await debtFor(p.merchant, p.kind)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
   return {
     id, source, bank: p.bank, role: p.role, kind: p.kind,
     date: p.date, time: p.time, amount: p.amount, merchant: p.merchant, account: p.account,
@@ -105,6 +105,23 @@ export async function accept(item: InboxItem, category = item.category, subcateg
       if (p.kind === item.kind && merchantKey(p.merchant) === key) await db.inbox.update(p.id, { category, subcategory })
     }
   })
+  await linkToDebt(item)
+}
+
+// La deuda a la que corresponde un movimiento: una transferencia a Juan Camilo
+// es un pago de la deuda que tienes con él.
+async function debtFor(merchant: string, kind: InboxItem['kind']) {
+  const upper = merchant.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return (await db.debts.toArray()).find(
+    (d) =>
+      ((d.direction === 'debo' && kind === 'gasto') || (d.direction === 'me-deben' && kind === 'ingreso')) &&
+      d.keywords.some((k) => k && upper.includes(k.toUpperCase())),
+  )
+}
+
+async function linkToDebt(item: InboxItem) {
+  const debt = await debtFor(item.merchant, item.kind)
+  if (debt) await addDebtPayment(debt.id, { date: item.date, amount: item.amount, note: `Desde ${item.bank}` })
 }
 
 export async function acceptAll() {
