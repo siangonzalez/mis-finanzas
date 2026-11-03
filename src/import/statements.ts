@@ -246,12 +246,85 @@ export function bancolombiaCardItems(lines: string[]): StatementItem[] {
   return items
 }
 
+// ── Resumen de la tarjeta: cuánto debes y cuándo pagar ─────────────────
+export interface CardSummary {
+  id: string // `${banco}-${últimos 4}`
+  bank: string
+  last4: string
+  cutDate: string // fecha de corte del extracto
+  dueDate: string // pagar antes de ('' si no hay nada que pagar)
+  totalDebt: number
+  minPayment: number
+  limit: number
+  available: number
+  ea: number // tasa efectiva anual más alta del extracto (0,2856 = 28,56 %)
+}
+
+const MONTH_ABBR: Record<string, number> = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 }
+
+function isoFrom(day: string, mon: string, year: string) {
+  const m = MONTH_ABBR[mon.toLowerCase().slice(0, 3)]
+  return m ? `${year}-${String(m).padStart(2, '0')}-${day.padStart(2, '0')}` : ''
+}
+
+function maxEA(lines: string[]) {
+  let ea = 0
+  for (const l of lines) {
+    const m = l.match(/([\d.,]+)\s?%\s+([\d.,]+)\s?%\s*$/)
+    if (m) ea = Math.max(ea, Number(m[2].replace(',', '.')) / 100)
+  }
+  return ea
+}
+
+// Tuya, primera página: "05-oct-2026 $48.566,94 $168.159,03" (fecha límite, mínimo, total),
+// y en otras líneas "Fecha de Corte: 09-sep-2026", "Cupo Total: $8.600.000", "Cupo Disponible: …".
+export function tuyaSummary(lines: string[]): CardSummary | null {
+  const last4 = lines.join(' ').match(/N[uú]mero de tarjeta:?\s*\*+(\d{4})/i)?.[1] ?? ''
+  const i = lines.findIndex((l) => /^\d{2}-\w{3}-\d{4}\s+\$[\d.]+,\d{2}\s+\$[\d.]+,\d{2}$/.test(l))
+  if (i < 0) return null
+  const head = lines[i].match(/^(\d{2})-(\w{3})-(\d{4})\s+\$([\d.]+,\d{2})\s+\$([\d.]+,\d{2})$/)!
+  const all = lines.join(' ')
+  const cut = all.match(/Fecha de Corte:?\s*(\d{2})-(\w{3})-(\d{4})/i)
+  const money = (re: RegExp) => parseAmount(all.match(re)?.[1] ?? '0')
+  return {
+    id: `tuya-${last4}`, bank: 'Tuya', last4,
+    dueDate: isoFrom(head[1], head[2], head[3]),
+    cutDate: cut ? isoFrom(cut[1], cut[2], cut[3]) : '',
+    minPayment: parseAmount(head[4]), totalDebt: parseAmount(head[5]),
+    limit: money(/Cupo Total:?\s*\$([\d.]+)/i), available: money(/Cupo Disponible:?\s*\$([\d.]+)/i),
+    ea: maxEA(lines.filter((l) => /^Compras\s/.test(l))),
+  }
+}
+
+// Bancolombia, página en pesos: "15 sep - 15 oct. 2026 $ 7.556.731,00 …" (periodo y pago total),
+// "nov. 03, 2026 … $ 538.898,00 …" (pagar antes de y mínimo), "Cupo total: $ …", "Disponible: $ …".
+export function bancolombiaSummary(lines: string[]): CardSummary | null {
+  const last4 = lines.join(' ').match(/Tarjeta:\s*\*+(\d{4})/)?.[1] ?? ''
+  const start = lines.findIndex((l) => /Moneda:\s*PESOS/i.test(l))
+  if (start < 0) return null
+  const end = lines.findIndex((l, k) => k > start && /Detalles del movimiento/i.test(l))
+  const sec = lines.slice(start, end < 0 ? undefined : end)
+  const period = sec.map((l) => l.match(/^\d{1,2} \w{3}\.? - (\d{1,2}) (\w{3})\.? (\d{4}) \$ ([\d.]+,\d{2})/)).find(Boolean)
+  const due = sec.map((l) => l.match(/^(\w{3})\.? (\d{2}), (\d{4}).*?\$ ([\d.]+,\d{2})/)).find(Boolean)
+  const amount = (re: RegExp) => parseAmount(sec.join(' ').match(re)?.[1] ?? '0')
+  return {
+    id: `bancolombia-${last4}`, bank: 'Bancolombia', last4,
+    cutDate: period ? isoFrom(period[1], period[2], period[3]) : '',
+    totalDebt: period ? parseAmount(period[4]) : 0,
+    dueDate: due ? isoFrom(due[2], due[1], due[3]) : '',
+    minPayment: due ? parseAmount(due[4]) : 0,
+    limit: amount(/Cupo total:\s*\$\s?([\d.]+,\d{2})/),
+    available: amount(/Disponible:\s*\$\s?([\d.]+,\d{2})/),
+    ea: maxEA(sec),
+  }
+}
+
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
-export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[] } {
+export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[]; card?: CardSummary | null } {
   const text = lines.join(' ')
-  if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines) }
+  if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines), card: tuyaSummary(lines) }
   if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
   // Nequi va antes: sus extractos pueden mencionar a Bancolombia.
-  if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines) }
+  if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines), card: bancolombiaSummary(lines) }
   throw new Error('Por ahora leo extractos de Nequi, Tuya y las tarjetas Bancolombia. Mándame un ejemplo de este banco y lo agrego.')
 }

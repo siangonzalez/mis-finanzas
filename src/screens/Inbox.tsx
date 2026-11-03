@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useRef, useState } from 'react'
 import { categoriesFor, findCategory } from '../data/categories'
-import { db, type InboxItem } from '../data/db'
+import { db, saveCardSummary, type InboxItem } from '../data/db'
 import { syncGmail, isGmailConfigured } from '../import/gmail'
 import { accept, acceptAll, ignore, ingest, ingestStatement, restore, updateSuggestion } from '../import/inbox'
 import { PdfPasswordError, readPdfLines } from '../import/pdf'
@@ -75,6 +75,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
           }
           throw new Error(`${files[i].name}: ${e instanceof Error ? e.message : 'no pude leerlo.'}`)
         }
+        if ('card' in statement && statement.card) await saveCardSummary(statement.card)
         const res = await ingestStatement(statement.items)
         t.rows += statement.items.length
         t.added += res.added

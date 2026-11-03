@@ -38,7 +38,8 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 
 - **Tarjeta Tuya (PDF):** el mismo botón lee el extracto de Tuya/Carulla. Las compras entran como gasto por su valor total; los pagos a la tarjeta quedan "entre tus cuentas" y se emparejan con el pago que sale de Nequi o Bancolombia, para no contar el gasto dos veces.
 
-Falta: las tarjetas de Bancolombia (AMEX y MasterCard). Se necesita un extracto de ejemplo para leer su formato.
+- **Tarjetas Bancolombia (PDF):** lee los movimientos nuevos en pesos; abonos y avances quedan "entre tus cuentas".
+- **Lo que debes en cada tarjeta:** al cargar el extracto de Tuya o Bancolombia, la app guarda la deuda a la fecha de corte, el pago mínimo, la fecha límite, el cupo y la tasa. Se ven en **Deudas → Tarjetas de crédito**, suman al total que debes y aparecen en el Resumen cuando el pago vence en 7 días o menos.
 
 ## Deudas
 

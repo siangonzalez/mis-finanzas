@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Kind } from './categories'
 import type { DebtEvent, DebtTerms } from '../lib/debt'
+import type { CardSummary } from '../import/statements'
 
 // Todo vive en IndexedDB del navegador por ahora. Las funciones de este
 // archivo son la única puerta a los datos, para poder cambiar a un servidor
@@ -81,6 +82,7 @@ const db = new Dexie('finanzas') as Dexie & {
   rules: EntityTable<Rule, 'id'>
   settings: EntityTable<Setting, 'key'>
   debts: EntityTable<Debt, 'id'>
+  cards: EntityTable<CardSummary, 'id'>
 }
 
 db.version(1).stores({
@@ -97,6 +99,19 @@ db.version(2).stores({
 db.version(3).stores({
   debts: 'id',
 })
+
+// Resumen de cada tarjeta de crédito, tomado del último extracto cargado.
+db.version(4).stores({
+  cards: 'id',
+})
+
+export async function saveCardSummary(c: CardSummary) {
+  const prev = await db.cards.get(c.id)
+  // Un extracto viejo no reemplaza uno más reciente.
+  if (prev && prev.cutDate > c.cutDate) return false
+  await db.cards.put(c)
+  return true
+}
 
 export async function getSetting(key: string) {
   return (await db.settings.get(key))?.value ?? ''
@@ -154,6 +169,7 @@ export interface Backup {
   inbox?: InboxItem[]
   rules?: Rule[]
   debts?: Debt[]
+  cards?: CardSummary[]
 }
 
 export async function exportBackup(): Promise<Backup> {
@@ -166,6 +182,7 @@ export async function exportBackup(): Promise<Backup> {
     inbox: await db.inbox.toArray(),
     rules: await db.rules.toArray(),
     debts: await db.debts.toArray(),
+    cards: await db.cards.toArray(),
   }
 }
 
@@ -173,20 +190,21 @@ export async function importBackup(data: Backup) {
   if (data?.app !== 'finanzas' || !Array.isArray(data.movements)) {
     throw new Error('El archivo no es una copia de esta app.')
   }
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear()])
+  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts, db.cards], async () => {
+    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear(), db.cards.clear()])
     // Se conservan los ids para que la bandeja siga apuntando a sus movimientos.
     await db.movements.bulkPut(data.movements)
     await db.budgets.bulkPut(data.budgets ?? [])
     await db.inbox.bulkPut(data.inbox ?? [])
     await db.rules.bulkPut(data.rules ?? [])
     await db.debts.bulkPut(data.debts ?? [])
+    await db.cards.bulkPut(data.cards ?? [])
   })
 }
 
 export async function deleteAll() {
-  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts], async () => {
-    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear()])
+  await db.transaction('rw', [db.movements, db.budgets, db.inbox, db.rules, db.debts, db.cards], async () => {
+    await Promise.all([db.movements.clear(), db.budgets.clear(), db.inbox.clear(), db.rules.clear(), db.debts.clear(), db.cards.clear()])
   })
 }
 

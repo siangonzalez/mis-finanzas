@@ -186,3 +186,44 @@ describe('extracto de tarjeta Bancolombia', () => {
     expect(by('Avance de la tarjeta Bancolombia')).toMatchObject({ own: true, parsed: { kind: 'gasto', amount: 2000000 } })
   })
 })
+
+describe('resumen de la tarjeta (cuánto debes y cuándo pagar)', () => {
+  it('Tuya', () => {
+    const c = statementFromPdfLines([
+      '05-oct-2026 $48.566,94 $168.159,03',
+      'Fecha de Corte: 09-sep-2026 (+) Abono a capital 3.416,94',
+      '*Cupo Total: $8.600.000 (+) Cobro por avances 0,00',
+      '*Cupo Disponible: $8.431.840',
+      'Compras 2,15800% 29,20180%',
+      'Mora 2,16018% 29,23490%',
+      'Número de tarjeta: ************9999',
+      'girar a nombre de TUYA S.A NIT 000000000-0',
+    ]).card
+    expect(c).toEqual({
+      id: 'tuya-9999', bank: 'Tuya', last4: '9999', dueDate: '2026-10-05', cutDate: '2026-09-09',
+      minPayment: 48567, totalDebt: 168159, limit: 8600000, available: 8431840, ea: 0.292018,
+    })
+  })
+
+  it('Bancolombia (solo la parte en pesos)', () => {
+    const c = statementFromPdfLines([
+      'Tarjeta: ************1234 Tarjeta: ************1234',
+      'Moneda: DOLARES Moneda: DOLARES',
+      '15 sep - 15 oct. 2026 $ 0,00 $ 0,00 $ 0,00',
+      'NIT: 890.903.938-8 ESTADO DE CUENTA EN: DOLARES',
+      'Detalles del movimiento',
+      'Moneda: PESOS Moneda: PESOS',
+      'Deuda a la fecha de corte: Periodo facturado Pago Total:',
+      '15 sep - 15 oct. 2026 $ 7.556.731,00 $ 7.556.731,00 $ 7.556.731,00',
+      'Cupo total: $ 7.800.000,00',
+      'nov. 03, 2026 nov. 03, 2026 nov. 03, 2026 $ 538.898,00 $ 538.898,00 $ 538.898,00',
+      'Disponible: $ 243.269,46',
+      'Avances 2.1155% 28.5582%',
+      'Detalles del movimiento',
+    ]).card
+    expect(c).toMatchObject({
+      id: 'bancolombia-1234', cutDate: '2026-10-15', dueDate: '2026-11-03', totalDebt: 7556731,
+      minPayment: 538898, limit: 7800000, available: 243269, ea: 0.285582,
+    })
+  })
+})

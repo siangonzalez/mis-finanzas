@@ -4,6 +4,7 @@ import {
   addDebtDisbursement, addDebtPayment, createDebt, db, getSetting, importDebtFile, saveMovement, type Debt,
 } from '../data/db'
 import { syncDebts, type SyncResult } from '../data/debtSync'
+import type { CardSummary } from '../import/statements'
 import { overdueInstallments, payoffProjection, simulateDebt } from '../lib/debt'
 import { money, moneyInput, monthLabel, parseMoney, todayISO } from '../lib/format'
 
@@ -40,6 +41,7 @@ function status(d: Debt, today: string) {
 
 export function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray(), [])
+  const cards = useLiveQuery(() => db.cards.toArray(), []) ?? []
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [sync, setSync] = useState<SyncResult | null>(null)
@@ -94,11 +96,13 @@ export function Debts() {
 
   const rows = debts.map((d) => ({ d, ...status(d, today) }))
   const owed = rows.filter((r) => r.d.direction === 'me-deben').reduce((s, r) => s + Math.max(0, r.balance), 0)
-  const owing = rows.filter((r) => r.d.direction === 'debo').reduce((s, r) => s + Math.max(0, r.balance), 0)
+  const owing =
+    rows.filter((r) => r.d.direction === 'debo').reduce((s, r) => s + Math.max(0, r.balance), 0) +
+    cards.reduce((s, c) => s + c.totalDebt, 0)
 
   return (
     <>
-      {debts.length > 0 ? (
+      {debts.length > 0 || cards.length > 0 ? (
         <section className="grid2">
           <div className="card stat">
             <span className="muted small">Te deben</span>
@@ -141,6 +145,8 @@ export function Debts() {
           </section>
         )
       })}
+
+      {cards.length > 0 && <CardList cards={cards} />}
 
       <section className="card">
         <div className="stack">
@@ -472,5 +478,53 @@ function BalanceChart({ series }: { series: { date: string; balance: number }[] 
       <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
       <circle cx={x(last.date)} cy={y(last.balance)} r="4" fill="var(--accent)" />
     </svg>
+  )
+}
+
+// Tarjetas de crédito: lo que dice el último extracto cargado de cada una.
+function CardList({ cards }: { cards: CardSummary[] }) {
+  const today = todayISO()
+  const soon = (d: string) => (Date.parse(d) - Date.parse(today)) / 86_400_000
+  const sorted = [...cards].sort((a, b) => b.totalDebt - a.totalDebt)
+  return (
+    <section>
+      <h4 className="group-title">Tarjetas de crédito</h4>
+      <ul className="debt-list">
+        {sorted.map((c) => {
+          const name = `${c.bank} *${c.last4}`
+          if (c.totalDebt < SETTLED) {
+            return (
+              <li key={c.id} className="card debt-item">
+                <span className="mv-text"><b>{name}</b><span className="small pos">Sin deuda</span></span>
+                <b className="debt-balance">{money(0)}</b>
+              </li>
+            )
+          }
+          const days = c.dueDate ? soon(c.dueDate) : Infinity
+          const tone = days < 0 ? 'bad' : days <= 5 ? 'warn' : ''
+          return (
+            <li key={c.id} className={`card card-debt ${tone === 'bad' ? 'alert' : ''}`}>
+              <div className="debt-item-row">
+                <span className="mv-text">
+                  <b>{name}</b>
+                  <span className={`small ${tone === 'warn' ? 'warn-text' : 'muted'}`}>
+                    {days < 0 ? `⚠️ La fecha límite fue el ${shortDate(c.dueDate)}. ¿Ya pagaste?`
+                      : days === 0 ? `⏰ Hoy vence el pago mínimo: ${money(c.minPayment)}`
+                      : `${days <= 5 ? '⏰ ' : ''}Mínimo ${money(c.minPayment)} antes del ${shortDate(c.dueDate)}`}
+                  </span>
+                </span>
+                <b className="debt-balance">{money(c.totalDebt)}</b>
+              </div>
+              <p className="muted small">
+                Extracto con corte al {c.cutDate ? shortDate(c.cutDate) : '—'}
+                {c.limit > 0 && ` · usas ${Math.round(((c.limit - c.available) / c.limit) * 100)} % del cupo de ${money(c.limit)}`}
+                {c.ea > 0 && ` · ${(c.ea * 100).toFixed(1).replace('.', ',')} % EA`}
+              </p>
+            </li>
+          )
+        })}
+      </ul>
+      <p className="muted small group-note">Se actualiza cada vez que cargas el extracto del mes en Revisar. Los pagos que hagas después del corte se verán en el siguiente.</p>
+    </section>
   )
 }
