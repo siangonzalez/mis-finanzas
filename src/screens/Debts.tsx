@@ -481,17 +481,25 @@ function BalanceChart({ series }: { series: { date: string; balance: number }[] 
   )
 }
 
-// Tarjetas de crédito: lo que dice el último extracto cargado de cada una.
+// Mes de la última cuota: la que vence ahora más las que faltan.
+function endMonth(due: string, left: number) {
+  const [y, m] = due.split('-').map(Number)
+  return monthLabel(`${new Date(y, m - 1 + left - 1, 1).getFullYear()}-${String(new Date(y, m - 1 + left - 1, 1).getMonth() + 1).padStart(2, '0')}`).toLowerCase()
+}
+
+// Tarjetas y créditos de bancos: lo que dice el último extracto cargado de cada uno.
 function CardList({ cards }: { cards: CardSummary[] }) {
   const today = todayISO()
   const soon = (d: string) => (Date.parse(d) - Date.parse(today)) / 86_400_000
   const sorted = [...cards].sort((a, b) => b.totalDebt - a.totalDebt)
   return (
     <section>
-      <h4 className="group-title">Tarjetas de crédito</h4>
+      <h4 className="group-title">Tarjetas y créditos</h4>
       <ul className="debt-list">
         {sorted.map((c) => {
-          const name = `${c.bank} *${c.last4}`
+          const loan = c.kind === 'prestamo'
+          const name = loan ? `Crédito ${c.bank} *${c.last4}` : `${c.bank} *${c.last4}`
+          const pay = loan ? 'Cuota' : 'Mínimo'
           if (c.totalDebt < SETTLED) {
             return (
               <li key={c.id} className="card debt-item">
@@ -509,14 +517,15 @@ function CardList({ cards }: { cards: CardSummary[] }) {
                   <b>{name}</b>
                   <span className={`small ${tone === 'warn' ? 'warn-text' : 'muted'}`}>
                     {days < 0 ? `⚠️ La fecha límite fue el ${shortDate(c.dueDate)}. ¿Ya pagaste?`
-                      : days === 0 ? `⏰ Hoy vence el pago mínimo: ${money(c.minPayment)}`
-                      : `${days <= 5 ? '⏰ ' : ''}Mínimo ${money(c.minPayment)} antes del ${shortDate(c.dueDate)}`}
+                      : days === 0 ? `⏰ Hoy vence: ${pay.toLowerCase()} de ${money(c.minPayment)}`
+                      : `${days <= 5 ? '⏰ ' : ''}${pay} ${money(c.minPayment)} antes del ${shortDate(c.dueDate)}`}
                   </span>
                 </span>
                 <b className="debt-balance">{money(c.totalDebt)}</b>
               </div>
               <p className="muted small">
-                Extracto con corte al {c.cutDate ? shortDate(c.cutDate) : '—'}
+                {loan ? 'Saldo' : 'Extracto con corte'} al {c.cutDate ? shortDate(c.cutDate) : '—'}
+                {loan && c.installmentsLeft ? ` · quedan ${c.installmentsLeft} cuotas, terminas en ${endMonth(c.dueDate, c.installmentsLeft)}` : ''}
                 {c.limit > 0 && ` · usas ${Math.round(((c.limit - c.available) / c.limit) * 100)} % del cupo de ${money(c.limit)}`}
                 {c.ea > 0 && ` · ${(c.ea * 100).toFixed(1).replace('.', ',')} % EA`}
               </p>

@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi, Tuya y las tarjetas Bancolombia. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -258,6 +258,8 @@ export interface CardSummary {
   limit: number
   available: number
   ea: number // tasa efectiva anual más alta del extracto (0,2856 = 28,56 %)
+  kind?: 'tarjeta' | 'prestamo' // sin valor = tarjeta
+  installmentsLeft?: number // préstamos: cuotas que faltan, contando la que vence
 }
 
 const MONTH_ABBR: Record<string, number> = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12 }
@@ -319,12 +321,41 @@ export function bancolombiaSummary(lines: string[]): CardSummary | null {
   }
 }
 
+// Davivienda, "Extracto Crédito" (préstamos de libre inversión y similares):
+// "Páguese antes del Nov. 03/2026", "+ Valor Cuota Mes $527,000.00", "No. Cuotas Pdtes. Pago Total 17",
+// "Tasa Interés Cte.Cobrada Periodo 20.12% E.A", "Saldo a: Sep. 30/2026 $ 7,944,160.34".
+export function daviviendaLoanSummary(lines: string[]): CardSummary | null {
+  const all = lines.join(' ')
+  const number = all.match(/No del cr[eé]dito:?\s*([\d-]+)/i)?.[1].replace(/\D/g, '') ?? ''
+  const last4 = number.slice(-4)
+  const due = all.match(/P[aá]guese antes del\s+(\w{3})\.?\s+(\d{1,2})\/(\d{4})/i)
+  const balance = all.match(/Saldo a:?\s+(\w{3})\.?\s+(\d{1,2})\/(\d{4})\s+\$\s?([\d,]+\.\d{2})/i)
+  const total = all.match(/Total Valor a Pagar\s+\$\s?([\d,]+\.\d{2})/i)
+  if (!balance || !total) return null
+  const ea = all.match(/Tasa\s+Inter[eé]s Cte\.?\s*Cobrada Periodo\s+([\d.]+)\s?%/i) ?? all.match(/([\d.]+)\s?%\s+E\.A/i)
+  const left = all.match(/Cuotas Pdtes\.? Pago Total\s+(\d+)/i)
+  return {
+    id: `davivienda-credito-${last4}`, bank: 'Davivienda', last4, kind: 'prestamo',
+    cutDate: isoFrom(balance[2], balance[1], balance[3]),
+    dueDate: due ? isoFrom(due[2], due[1], due[3]) : '',
+    totalDebt: parseAmount(balance[4]),
+    minPayment: parseAmount(total[1]),
+    limit: 0, available: 0,
+    ea: ea ? Number(ea[1]) / 100 : 0,
+    installmentsLeft: left ? Number(left[1]) : undefined,
+  }
+}
+
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
 export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[]; card?: CardSummary | null } {
   const text = lines.join(' ')
   if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines), card: tuyaSummary(lines) }
   if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
-  // Nequi va antes: sus extractos pueden mencionar a Bancolombia.
+  // Nequi va antes: sus extractos mencionan a Bancolombia y Davivienda en los pagos.
+  if (/860\.034\.313|Banco Davivienda S\.?A/i.test(text)) {
+    if (/Extracto Cr[eé]dito/i.test(text)) return { bank: 'Davivienda', items: [], card: daviviendaLoanSummary(lines) }
+    throw new Error('De Davivienda por ahora leo el extracto del crédito, no el de la tarjeta.')
+  }
   if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines), card: bancolombiaSummary(lines) }
-  throw new Error('Por ahora leo extractos de Nequi, Tuya y las tarjetas Bancolombia. Mándame un ejemplo de este banco y lo agrego.')
+  throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')
 }

@@ -20,8 +20,8 @@ export function DebtReminder({ onOpen }: { onOpen: () => void }) {
         return (
           <button key={c.id} className={`card debt-reminder ${d < 0 ? 'alert' : ''}`} onClick={onOpen}>
             <span>
-              <span className="muted small">Tarjeta {c.bank} *{c.last4}</span>
-              <b>Mínimo {money(c.minPayment)}</b>
+              <span className="muted small">{c.kind === 'prestamo' ? 'Crédito' : 'Tarjeta'} {c.bank} *{c.last4}</span>
+              <b>{c.kind === 'prestamo' ? 'Cuota' : 'Mínimo'} {money(c.minPayment)}</b>
             </span>
             <span className="small">
               {d < 0 ? '⚠️ Venció, ¿ya pagaste?' : d === 0 ? '⏰ Vence hoy' : `⏰ Vence en ${d} día${d > 1 ? 's' : ''}`} ›

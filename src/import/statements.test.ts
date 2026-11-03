@@ -99,7 +99,7 @@ describe('extracto de Nequi en PDF', () => {
   })
 
   it('avisa si el PDF no es de Nequi', () => {
-    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/leo extractos de Nequi, Tuya y las tarjetas Bancolombia/)
+    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/leo extractos de Nequi, Tuya, las tarjetas Bancolombia/)
   })
 })
 
@@ -225,5 +225,38 @@ describe('resumen de la tarjeta (cuánto debes y cuándo pagar)', () => {
       id: 'bancolombia-1234', cutDate: '2026-10-15', dueDate: '2026-11-03', totalDebt: 7556731,
       minPayment: 538898, limit: 7800000, available: 243269, ea: 0.285582,
     })
+  })
+})
+
+describe('extracto de crédito Davivienda', () => {
+  const lines = [
+    'NIT. 860.034.313-7',
+    'Extracto Crédito',
+    'Apreciado Cliente Páguese antes del Nov. 03/2026',
+    'CORREO@EJEMPLO.COM + Valor Cuota Mes $527,000.00',
+    'Total Valor a Pagar $527,000.00',
+    'No. Días Liquidados 34 No. Cuotas Pdtes. Pago Total 17',
+    'Sistema de Amortización CUOTA FIJA $ Tasa Interés Cte.Cobrada Periodo 20.12% E.A',
+    'No del crédito: 000000000011111-2',
+    'Saldo a: Sep. 30/2026 $ 7,944,160.34',
+  ]
+
+  it('lee saldo, cuota, fecha, tasa y cuotas que faltan', () => {
+    const { bank, items, card } = statementFromPdfLines(lines)
+    expect(bank).toBe('Davivienda')
+    expect(items).toEqual([])
+    expect(card).toMatchObject({
+      id: 'davivienda-credito-1112', kind: 'prestamo', cutDate: '2026-09-30', dueDate: '2026-11-03',
+      totalDebt: 7944160, minPayment: 527000, installmentsLeft: 17,
+    })
+    expect(card!.ea).toBeCloseTo(0.2012)
+  })
+
+  it('un extracto de Nequi que menciona Davivienda sigue siendo de Nequi', () => {
+    const { bank } = statementFromPdfLines([
+      'Extracto de depósito de bajo monto de: NEQUI S.A.',
+      '01/10/2026 COMPRA PSE EN Davivienda $-1,322.00 $8,000.00',
+    ])
+    expect(bank).toBe('Nequi')
   })
 })
