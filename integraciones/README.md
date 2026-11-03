@@ -28,7 +28,7 @@ Cada vez que pagas con Apple Pay, el iPhone le pasa la compra a la app.
 
 1. Abre **Atajos → Automatización → Nueva automatización → Transacción**.
 2. Elige tus tarjetas y marca **Ejecutar inmediatamente**.
-3. Acción: **Abrir URLs** con esta dirección (cambia el dominio por el de tu app):
+3. Acción: **Abrir URLs** con esta dirección:
 
    ```
    https://siangonzalez.github.io/mis-finanzas/#/applepay?monto=[Cantidad]&comercio=[Comercio]&tarjeta=[Tarjeta]
