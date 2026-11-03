@@ -99,6 +99,13 @@ describe('categorías sugeridas', () => {
     expect(suggestCategory('Cuota de manejo Tuya', 'gasto', []).subcategory).toBe('Tarjeta de crédito')
   })
 
+  it('a cada persona le corresponde su propia regla', () => {
+    expect(merchantKey('Transferencia a JUAN CAMILO OSMA')).toBe('TRANSFERENCIA A JUAN CAMILO OSMA')
+    expect(merchantKey('Transferencia a JUAN SEBASTIAN HOYOS')).not.toBe(merchantKey('Transferencia a JUAN CAMILO OSMA'))
+    expect(merchantKey('UBER*RIDES')).toBe('UBER RIDES')
+    expect(merchantKey('***')).toBe('')
+  })
+
   it('las reglas propias ganan', () => {
     const rules = [{ key: merchantKey('FACEBK *ABC123'), kind: 'gasto' as const, category: 'Educación', subcategory: 'Otros' }]
     expect(suggestCategory('FACEBK *ZZ99', 'gasto', rules).category).toBe('Otros')

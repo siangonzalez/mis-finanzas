@@ -67,6 +67,8 @@ async function addWithDedupe(item: InboxItem) {
   await db.inbox.put({ ...item, deleted: false })
 }
 
+const GENERIC_MERCHANTS = new Set(['PAGO CON QR', 'COMPRA APPLE PAY', 'PAGO PSE'])
+
 // Ya está en la bandeja (y no fue borrado con "Borrar todos los datos").
 async function isKnown(id: string) {
   const x = await db.inbox.get(id)
@@ -143,9 +145,12 @@ export async function accept(item: InboxItem, category = item.category, subcateg
     createdAt: Date.now(),
   })
   const key = merchantKey(item.merchant)
+  // Sin nombre de comercio (o uno genérico, como "Pago con QR") no hay nada que aprender.
+  const learn = Boolean(key) && !GENERIC_MERCHANTS.has(key)
   const rule: Rule = { id: `${item.kind}|${key}`, key, kind: item.kind, category, subcategory }
   await db.transaction('rw', db.inbox, db.rules, async () => {
     await db.inbox.update(item.id, { status: 'aceptado', category, subcategory, movementId })
+    if (!learn) return
     // Aprende: la próxima vez este comercio llega con esta categoría.
     await db.rules.put(rule)
     const pending = await db.inbox.where('status').equals('pendiente').toArray()

@@ -11,8 +11,10 @@ export interface UserRule extends Suggestion {
 }
 
 // "UBER*RIDES" → "UBER RIDES", "BOLD SA*ANA MARI" → "BOLD ANA MARI": clave estable para reglas.
+// A una persona ("Transferencia a JUAN CAMILO OSMA") se le deja el nombre completo,
+// para que dos personas con el mismo primer nombre no compartan regla.
 export function merchantKey(merchant: string) {
-  return merchant
+  const words = merchant
     .toUpperCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -21,8 +23,9 @@ export function merchantKey(merchant: string) {
     .replace(/\s+/g, ' ')
     .trim()
     .split(' ')
-    .slice(0, 3)
-    .join(' ')
+    .filter(Boolean)
+  const person = words[0] === 'TRANSFERENCIA' && words[1] === 'A'
+  return words.slice(0, person ? 7 : 3).join(' ')
 }
 
 const DEFAULTS: [RegExp, Kind, Suggestion][] = [
@@ -59,7 +62,7 @@ const DEFAULTS: [RegExp, Kind, Suggestion][] = [
 
 export function suggestCategory(merchant: string, kind: Kind, userRules: UserRule[]): Suggestion {
   const key = merchantKey(merchant)
-  const own = userRules.find((r) => r.kind === kind && r.key === key)
+  const own = key ? userRules.find((r) => r.kind === kind && r.key === key) : undefined
   if (own) return { category: own.category, subcategory: own.subcategory }
 
   if (kind === 'ingreso') {
