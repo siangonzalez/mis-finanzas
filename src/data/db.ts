@@ -220,3 +220,41 @@ export async function addDebtPayment(debtId: string, payment: DebtEvent) {
   await db.debts.update(debtId, { payments: [...debt.payments, { ...payment, id, pending: true }] })
   return true
 }
+
+export interface NewDebt {
+  name: string
+  direction: Debt['direction']
+  amount: number
+  date: string
+  ea: number // 0 si es sin intereses
+  installment: number // 0 si no hay cuota acordada
+  dueDay: number
+  keywords: string[]
+  note?: string
+}
+
+export async function createDebt(n: NewDebt) {
+  const base = n.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'deuda'
+  let id = base
+  for (let i = 2; await db.debts.get(id); i++) id = `${base}-${i}`
+  const debt: Debt = {
+    id,
+    name: n.name.trim(),
+    direction: n.direction,
+    keywords: n.keywords.length ? n.keywords : [n.name.trim().toUpperCase()],
+    rates: [{ from: n.date, ea: n.ea }],
+    installment: n.installment,
+    dueDay: n.dueDay,
+    disbursements: [{ date: n.date, amount: n.amount, note: n.note || 'Préstamo' }],
+    payments: [],
+    pendingUpload: true,
+  }
+  await db.debts.put(debt)
+  return debt
+}
+
+export async function addDebtDisbursement(debtId: string, d: DebtEvent) {
+  const debt = await db.debts.get(debtId)
+  if (!debt) return
+  await db.debts.update(debtId, { disbursements: [...debt.disbursements, d], pendingUpload: true })
+}

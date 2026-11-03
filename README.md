@@ -38,9 +38,11 @@ Falta: importar los extractos PDF de las tarjetas de crédito (Davivienda, Nu, T
 
 ## Deudas
 
-- **Pestaña Deudas:** saldo de hoy con interés compuesto diario y tasas EA que cambian en el tiempo, cuotas vencidas, intereses causados, gráfica del saldo y "¿cuándo terminas?" con la cuota que quieras probar.
-- **Registrar pago** desde la deuda (opcionalmente también como gasto del mes). Si aceptas en Revisar una transferencia a la persona de la deuda, el pago se anota solo.
-- Los datos de cada deuda **no van en el código**: se cargan con un archivo `.json` (botón "Cargar archivo de deuda") y quedan guardados solo en el dispositivo.
+- **Pestaña Deudas:** lista de lo que **te deben** y lo que **debes**, con totales. Cada deuda muestra el saldo de hoy (con o sin interés compuesto diario y tasas EA que pueden cambiar), las cuotas atrasadas, la gráfica del saldo y "¿cuándo termina?" con la cuota que quieras probar.
+- **Nueva deuda** desde la app: quién, cuánto, fecha, interés opcional y cuota opcional. Después puedes sumar más préstamos y registrar pagos o abonos, si quieres también como gasto o ingreso del mes.
+- **Cuotas atrasadas:** son las vencidas menos las pagadas. Un pago que cubre dos cuotas cuenta como dos.
+- **Alertas:** si en Revisar aceptas una transferencia a (o de) la persona de la deuda, se anota sola como pago (o abono).
+- **Nube:** las deudas se guardan en la hoja "Mis finanzas – Deudas" de tu Google Drive (ver integraciones). Los datos **no van en el código**.
 
 ## Próximas fases
 

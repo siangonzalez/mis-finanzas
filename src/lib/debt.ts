@@ -94,23 +94,29 @@ export function simulateDebt(t: DebtTerms, until: string): DebtSimulation {
   return sim
 }
 
-// Cuotas vencidas sin pago: cada mes después del último pago cuyo día de
-// vencimiento ya pasó.
+// Cuotas atrasadas: las que han vencido desde el mes siguiente al primer
+// préstamo, menos las que se han pagado. Cada pago cuenta como las cuotas que
+// cubre (uno de 4M con cuota de 2M son dos), y como mínimo una, para que los
+// pagos de cuando la cuota era menor sigan contando.
 export function overdueInstallments(t: DebtTerms, today: string) {
-  const last = t.payments.map((p) => p.date).sort().pop() ?? t.disbursements.map((d) => d.date).sort()[0]
-  if (!last) return { overdue: [] as string[], next: '' }
-  let [y, m] = last.split('-').map(Number)
-  const overdue: string[] = []
-  for (;;) {
+  const first = t.disbursements.map((d) => d.date).sort()[0]
+  if (t.installment <= 0 || !first) return { overdue: [] as string[], next: '' }
+  let [y, m] = first.split('-').map(Number)
+  const due: string[] = []
+  let next = ''
+  while (!next) {
     m++
     if (m > 12) {
       m = 1
       y++
     }
-    const due = `${y}-${String(m).padStart(2, '0')}-${String(t.dueDay).padStart(2, '0')}`
-    if (due > today) return { overdue, next: due }
-    overdue.push(due)
+    const d = `${y}-${String(m).padStart(2, '0')}-${String(t.dueDay).padStart(2, '0')}`
+    if (d > today) next = d
+    else due.push(d)
   }
+  const covered = t.payments.reduce((n, p) => n + Math.max(1, Math.round(p.amount / t.installment)), 0)
+  const owed = Math.max(0, due.length - covered)
+  return { overdue: owed ? due.slice(-owed) : [], next }
 }
 
 // Meses para terminar si se paga la cuota cada mes (más las vencidas en la
@@ -119,7 +125,7 @@ export function payoffProjection(t: DebtTerms, balance: number, today: string) {
   const { overdue, next } = overdueInstallments(t, today)
   const ea = [...t.rates].sort((a, b) => a.from.localeCompare(b.from)).pop()?.ea ?? 0
   const rm = Math.pow(1 + ea, 1 / 12) - 1
-  if (!next || t.installment <= balance * rm) return { months: Infinity, endMonth: '', monthlyInterest: balance * rm }
+  if (!next || t.installment <= balance * rm) return { months: Infinity, installments: Infinity, endMonth: '', monthlyInterest: balance * rm }
   let [y, m] = next.split('-').map(Number)
   let s = balance
   let months = 0
@@ -136,5 +142,6 @@ export function payoffProjection(t: DebtTerms, balance: number, today: string) {
       }
     }
   }
-  return { months, endMonth: `${y}-${String(m).padStart(2, '0')}`, monthlyInterest: balance * rm }
+  // Cuotas reales: la primera fecha incluye las atrasadas.
+  return { months, installments: months + overdue.length, endMonth: `${y}-${String(m).padStart(2, '0')}`, monthlyInterest: balance * rm }
 }

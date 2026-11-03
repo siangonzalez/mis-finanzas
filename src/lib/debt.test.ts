@@ -33,10 +33,27 @@ describe('simulateDebt', () => {
 })
 
 describe('cuotas', () => {
-  it('marca como vencidas las cuotas después del último pago', () => {
-    const t = { ...base, payments: [{ date: '2025-08-25', amount: 100_000 }] }
+  // Préstamo el 1 de enero: la primera cuota vence el 25 de febrero.
+  const monthly = (months: number[]) => months.map((mm) => ({ date: `2025-${String(mm).padStart(2, '0')}-25`, amount: 100_000 }))
+
+  it('marca como atrasadas las cuotas vencidas que no se han pagado', () => {
+    const t = { ...base, payments: monthly([2, 3, 4, 5, 6, 7, 8]) }
     expect(overdueInstallments(t, '2025-11-03')).toEqual({ overdue: ['2025-09-25', '2025-10-25'], next: '2025-11-25' })
     expect(overdueInstallments(t, '2025-09-20').overdue).toEqual([])
+  })
+
+  it('un pago tardío cubre una sola cuota, no las anteriores', () => {
+    const t = { ...base, payments: monthly([2, 3, 4, 5, 6, 7, 8]).concat({ date: '2025-11-02', amount: 100_000 }) }
+    expect(overdueInstallments(t, '2025-11-03').overdue).toEqual(['2025-10-25'])
+  })
+
+  it('un pago doble cubre dos cuotas, y uno menor cuenta como una', () => {
+    const t = { ...base, payments: [...monthly([2, 3, 4, 5, 6, 7]), { date: '2025-08-25', amount: 40_000 }, { date: '2025-11-01', amount: 200_000 }] }
+    expect(overdueInstallments(t, '2025-11-03').overdue).toEqual([])
+  })
+
+  it('sin cuota fija no hay atrasos', () => {
+    expect(overdueInstallments({ ...base, installment: 0 }, '2026-01-01')).toEqual({ overdue: [], next: '' })
   })
 
   it('si la cuota no cubre el interés, nunca termina', () => {
