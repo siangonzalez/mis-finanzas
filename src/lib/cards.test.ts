@@ -39,6 +39,16 @@ describe('¿ya pagaste la tarjeta?', () => {
     expect(p).toMatchObject({ covered: true, manual: true })
   })
 
+  it('no confunde "otra cuenta tuya", el supermercado Carulla ni los cobros de la tarjeta', () => {
+    const p = cardPaid(card('Tuya'), [
+      pay('Envío a otra cuenta tuya', 653_000, '2026-10-12', { status: 'propia' }),
+      pay('CARULLA FRESH CALLE', 30_200, '2026-10-19'),
+      { ...pay('Cuota de manejo Tuya', 41_900, '2026-10-20'), bank: 'Tuya' },
+      pay('Compania de Financiamiento Tuy', 190_715),
+    ])
+    expect(p.paid).toBe(190_715)
+  })
+
   it('no confunde pagos a otros bancos', () => {
     expect(cardPaid(card('Tuya'), [pay('Banco Davivienda SA Zona Pa', 527_000)]).paid).toBe(0)
   })

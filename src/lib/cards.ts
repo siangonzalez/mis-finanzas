@@ -6,6 +6,7 @@ import type { CardSummary } from '../import/statements'
 // Financiamiento Tuy"), o el "Ya pagué" que marques a mano.
 
 export interface PaymentLike {
+  bank?: string
   date: string
   amount: number
   kind: 'gasto' | 'ingreso'
@@ -19,10 +20,12 @@ export interface ManualPayment {
   amount: number
 }
 
-// Cómo aparece cada banco cuando le pagas desde otra cuenta.
+// Cómo aparece cada banco cuando le pagas desde otra cuenta. Ojo con los
+// parecidos: "otra cuenta tuya" no es Tuya, ni una compra en el supermercado
+// Carulla es un pago a la tarjeta Carulla.
 const PAYEE: Record<string, RegExp> = {
-  Tuya: /TUY|CARULLA|COMPA[NÑ]IA DE FINANCIAMIENTO/i,
-  Davivienda: /DAVIVIENDA/i,
+  Tuya: /FINANCIAMIENTO\s+TUY|\bTUYA\s+S\.?\s?A\b|PAGO A LA TARJETA TUYA|TARJETA\s+(CARULLA|[EÉ]XITO)/i,
+  Davivienda: /BANCO DAVIVIENDA|DAVIVIENDA\s+(CARTERA|ZONA|CR[EÉ]DITO)/i,
   Bancolombia: /PAGO A LA TARJETA BANCOLOMBIA|ABONO TARJETA|T\.?\s?CR[EÉ]D/i,
 }
 
@@ -39,7 +42,7 @@ export function cardPaid(card: CardSummary & { manualPayment?: ManualPayment }, 
     ? items.filter(
         (i) =>
           !i.deleted && i.kind === 'gasto' && i.status !== 'ignorado' && i.status !== 'duplicado' &&
-          i.date > card.cutDate && re.test(i.merchant),
+          i.bank !== card.bank && i.date > card.cutDate && re.test(i.merchant),
       )
     : []
   const manual = card.manualPayment && card.manualPayment.date > card.cutDate ? card.manualPayment : undefined

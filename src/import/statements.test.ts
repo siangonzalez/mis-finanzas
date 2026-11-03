@@ -48,7 +48,7 @@ describe('extracto de Nequi', () => {
   })
 
   it('marca lo que es entre tus propias cuentas', () => {
-    expect(by('Envío a otra cuenta tuya')?.own).toBe(true)
+    expect(by('Envío a otra de tus cuentas')?.own).toBe(true)
     expect(by('Recarga desde Bancolombia')?.own).toBe(true)
     expect(items.filter((i) => i.own)).toHaveLength(2)
   })

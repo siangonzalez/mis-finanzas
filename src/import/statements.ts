@@ -92,7 +92,7 @@ export function classifyNequiRow(r: StatementRow): { parsed: ParsedAlert; own: b
   // El extracto enmascara tu propio nombre ("SIA*** LEO***") y las recargas
   // vienen de tus otras cuentas.
   if (/\*\*\*/.test(d) || /^Recarga desde/i.test(d)) {
-    return { own: true, parsed: { ...base, kind: out ? 'gasto' : 'ingreso', type: out ? 'transferencia-enviada' : 'transferencia-recibida', merchant: out ? 'Envío a otra cuenta tuya' : d } }
+    return { own: true, parsed: { ...base, kind: out ? 'gasto' : 'ingreso', type: out ? 'transferencia-enviada' : 'transferencia-recibida', merchant: out ? 'Envío a otra de tus cuentas' : d } }
   }
   if (/^Pago de Intereses/i.test(d)) {
     return { own: false, parsed: { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Intereses Nequi' } }
