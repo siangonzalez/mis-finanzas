@@ -36,7 +36,9 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 
 - **Extractos de Nequi (Word o PDF):** en Revisar, "Cargar extracto de Nequi" lee el Word o el PDF que descargas de Nequi. Si el PDF tiene contraseña, la app la pide en pantalla y la usa solo para abrir el archivo en el dispositivo (no se guarda ni se envía). Trae lo que no llega por correo (pagos con QR, plata que te mandan de Nequi a Nequi, intereses), junta el 4x1000 del mes en un solo gasto, no repite lo que ya llegó por correo y deja aparte las **transferencias entre tus cuentas**, que no cuentan como gasto ni ingreso.
 
-Falta: los extractos de las tarjetas de crédito (Davivienda, Nu, Tuya), que no mandan una alerta por cada compra. Se necesita un ejemplo de cada banco para leer su formato.
+- **Tarjeta Tuya (PDF):** el mismo botón lee el extracto de Tuya/Carulla. Las compras entran como gasto por su valor total; los pagos a la tarjeta quedan "entre tus cuentas" y se emparejan con el pago que sale de Nequi o Bancolombia, para no contar el gasto dos veces.
+
+Falta: las tarjetas de Bancolombia (AMEX y MasterCard). Se necesita un extracto de ejemplo para leer su formato.
 
 ## Deudas
 

@@ -5,7 +5,7 @@ import { db, type InboxItem } from '../data/db'
 import { syncGmail, isGmailConfigured } from '../import/gmail'
 import { accept, acceptAll, ignore, ingest, ingestStatement, restore, updateSuggestion } from '../import/inbox'
 import { PdfPasswordError, readPdfLines } from '../import/pdf'
-import { readNequiDocx, rowsFromStatementLines, statementItems } from '../import/statements'
+import { readNequiDocx, statementFromPdfLines, statementItems } from '../import/statements'
 import { dayLabel, money } from '../lib/format'
 
 const SOURCE_LABEL: Record<InboxItem['source'], string> = {
@@ -53,8 +53,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
 
   const readStatement = async (f: File, pass?: string) => {
     const buf = await f.arrayBuffer()
-    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return rowsFromStatementLines(await readPdfLines(buf, pass))
-    return readNequiDocx(buf)
+    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return statementFromPdfLines(await readPdfLines(buf, pass))
+    const rows = readNequiDocx(buf)
+    return { bank: 'Nequi', items: statementItems(rows) }
   }
 
   const loadStatements = async (files: File[], pass?: string) => {
@@ -63,9 +64,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     const t = totals.current
     try {
       for (let i = 0; i < files.length; i++) {
-        let rows
+        let statement
         try {
-          rows = await readStatement(files[i], pass)
+          statement = await readStatement(files[i], pass)
         } catch (e) {
           if (e instanceof PdfPasswordError) {
             setNeedPassword({ files: files.slice(i), wrong: Boolean(pass) })
@@ -74,16 +75,17 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
           }
           throw new Error(`${files[i].name}: ${e instanceof Error ? e.message : 'no pude leerlo.'}`)
         }
-        const res = await ingestStatement(statementItems(rows))
-        t.rows += rows.length
+        const res = await ingestStatement(statement.items)
+        t.rows += statement.items.length
         t.added += res.added
         t.own += res.own
         t.repeated += res.repeated
       }
       setNeedPassword(null)
       setPassword('')
+      const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`
       setMessage(
-        `Leí ${t.rows} movimientos: ${t.added} nuevos para revisar` +
+        `Leí ${n(t.rows, 'movimiento', 'movimientos')}: ${n(t.added, 'nuevo', 'nuevos')} para revisar` +
           (t.repeated ? `, ${t.repeated} que ya tenías por correo` : '') +
           (t.own ? ` y ${t.own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.',
       )
@@ -117,7 +119,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         )}
         <div className="stack">
           <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>
-            {busy ? 'Leyendo…' : 'Cargar extracto de Nequi (Word o PDF)'}
+            {busy ? 'Leyendo…' : 'Cargar extracto (Nequi o Tuya)'}
           </button>
         </div>
         {needPassword && (

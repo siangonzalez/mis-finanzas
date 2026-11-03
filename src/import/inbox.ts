@@ -43,6 +43,13 @@ async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, r
 
 async function addWithDedupe(item: InboxItem) {
   const nearby = await db.inbox.where('date').between(shiftDate(item.date, -1), shiftDate(item.date, 1), true, true).toArray()
+  // La otra punta de una transferencia entre tus cuentas que ya cargaste
+  // (por ejemplo, el pago a la tarjeta que sale en el extracto de Tuya).
+  if (nearby.some((x) => x.status === 'propia' && x.bank !== item.bank && x.amount === item.amount && x.kind !== item.kind)) {
+    item.status = 'propia'
+    await db.inbox.add(item)
+    return
+  }
   // Un registro solo se empareja una vez por fuente: si ya tiene un repetido
   // de esta misma fuente (por ejemplo, una línea del extracto), un segundo
   // pago igual ese día es otro pago, no el mismo.
@@ -96,7 +103,7 @@ export async function ingestStatement(items: { id: string; parsed: ParsedAlert; 
       // también es entre tus cuentas.
       const near = await db.inbox.where('date').between(shiftDate(item.date, -1), shiftDate(item.date, 1), true, true).toArray()
       for (const x of near) {
-        if (x.status === 'pendiente' && x.source !== 'extracto' && x.amount === item.amount && x.kind !== item.kind) {
+        if (x.status === 'pendiente' && x.bank !== item.bank && x.amount === item.amount && x.kind !== item.kind) {
           await db.inbox.update(x.id, { status: 'propia' })
         }
       }
@@ -104,6 +111,7 @@ export async function ingestStatement(items: { id: string; parsed: ParsedAlert; 
     }
     await addWithDedupe(item)
     if (item.status === 'pendiente') added++
+    else if (item.status === 'propia') own++
     else repeated++
   }
   return { added, own, repeated }

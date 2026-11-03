@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora solo leo extractos de Nequi. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi y Tuya. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -143,4 +143,56 @@ export function statementItems(rows: StatementRow[]): StatementItem[] {
     })
   }
   return items
+}
+
+// ── Tuya (MasterCard Carulla / Éxito) ───────────────────────────────────
+// "2026/08/07 +COMPRA INTERNACIONA | CAPCUT 59.900,00 0,00 0,00 2,18% 29,62% 36/36"
+// Columnas: fecha, ±descripción, valor, saldo pendiente, cuota del mes, tasa, tasa EA, cuotas.
+const TUYA_ROW = /^(\d{4})\/(\d{2})\/(\d{2})\s+([+-])\s?(.+?)\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}\s+[\d.]+,\d{2}\s+[\d,]+%\s+[\d,]+%\s+\d+\/\d+$/
+
+export function tuyaItems(lines: string[]): StatementItem[] {
+  const card = lines.join(' ').match(/N[uú]mero de tarjeta:?\s*\*+(\d{4})/i)?.[1] ?? ''
+  const account = card ? `T. Crédito *${card}` : 'T. Crédito'
+  const seen = new Map<string, number>()
+  const items: StatementItem[] = []
+  for (const line of lines) {
+    const m = line.match(TUYA_ROW)
+    if (!m) continue
+    const date = `${m[1]}-${m[2]}-${m[3]}`
+    const charge = m[4] === '+'
+    const desc = m[5].trim()
+    const amount = parseAmount(m[6])
+    const merchant = desc.includes('|') ? desc.split('|').pop()!.trim() : desc
+    const base = { bank: 'Tuya', role: 'movimiento' as const, amount, date, account }
+
+    // El mismo movimiento puede salir en dos extractos (compras a cuotas):
+    // el id no depende de las cuotas, solo de fecha, valor y descripción.
+    const key = `${date}-${Math.round(amount)}-${desc.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
+    const n = (seen.get(key) ?? 0) + 1
+    seen.set(key, n)
+    const id = `extracto-tuya-${card}-${key}-${n}`
+
+    let parsed: ParsedAlert
+    let own = false
+    if (charge) {
+      const label = /^CUOTA DE MANEJO/i.test(desc) ? 'Cuota de manejo Tuya' : /^SEG/i.test(desc) ? 'Seguro deudores Tuya' : /^INTERES/i.test(desc) ? 'Intereses tarjeta Tuya' : merchant
+      parsed = { ...base, kind: 'gasto', type: 'compra', merchant: label }
+    } else if (/^PAGO/i.test(desc)) {
+      // Pagar la tarjeta es pasar plata de tu cuenta a la tarjeta: no es gasto.
+      own = true
+      parsed = { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Pago a la tarjeta Tuya' }
+    } else {
+      parsed = { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: `Ajuste o devolución Tuya` }
+    }
+    items.push({ id, parsed, own })
+  }
+  return items
+}
+
+// Decide qué banco es por el texto del PDF y devuelve sus movimientos.
+export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[] } {
+  const text = lines.join(' ')
+  if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines) }
+  if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
+  throw new Error('Por ahora leo extractos de Nequi y Tuya. Mándame un ejemplo de este banco y lo agrego.')
 }

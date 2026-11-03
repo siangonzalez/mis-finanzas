@@ -94,6 +94,9 @@ describe('categorías sugeridas', () => {
     expect(suggestCategory('MERQUEFAM EXPRESS AR', 'gasto', []).category).toBe('Comida')
     expect(suggestCategory('NETFLIX', 'gasto', []).subcategory).toBe('Netflix')
     expect(suggestCategory('CINES PREMIER', 'gasto', []).category).toBe('Entretenimiento')
+    expect(suggestCategory('GOOGLE *Google One', 'gasto', []).category).toBe('Suscripciones')
+    expect(suggestCategory('ADOBE', 'gasto', []).category).toBe('Suscripciones')
+    expect(suggestCategory('Cuota de manejo Tuya', 'gasto', []).subcategory).toBe('Tarjeta de crédito')
   })
 
   it('las reglas propias ganan', () => {

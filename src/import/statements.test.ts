@@ -1,7 +1,7 @@
 import { strToU8, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
 import { bitsToLines } from './pdf'
-import { readNequiDocx, rowsFromStatementLines, statementItems } from './statements'
+import { readNequiDocx, rowsFromStatementLines, statementFromPdfLines, statementItems } from './statements'
 
 // Extracto inventado con el formato real de Nequi (tabla de 4 columnas).
 function docx(rows: string[][]) {
@@ -99,6 +99,49 @@ describe('extracto de Nequi en PDF', () => {
   })
 
   it('avisa si el PDF no es de Nequi', () => {
-    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/solo leo extractos de Nequi/)
+    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/leo extractos de Nequi y Tuya/)
+  })
+})
+
+describe('extracto de Tuya (tarjeta de crédito)', () => {
+  // Líneas inventadas con el formato real del PDF de Tuya.
+  const lines = [
+    'Extracto Tarjeta de Crédito',
+    'Fecha Descripción',
+    '2026/08/06 -PAGO PSE 672.755,00 0,00 0,00 0,00% 0,00% 0/0',
+    '2026/08/07 +COMPRA INTERNACIONA | CAPCUT 59.900,00 0,00 0,00 2,18% 29,62% 36/36',
+    '2026/08/10 -AJUSTE AUTOMATICO I 1.258,53 0,00 0,00 0,00% 0,00% 0/0',
+    '2026/08/11 +COMPRA INTERNACIONA | GOOGLE *Google One 19.900,00 0,00 0,00 2,18% 29,62% 36/36',
+    '2026/08/26 +COMPRAS RECURR | ADOBE 93.058,00 0,00 0,00 2,18% 29,62% 1/1',
+    '2026/09/06 +COMPRA INTERNACIONA | CapCut 59.900,00 58.236,11 1.663,89 2,15% 29,20% 1/36',
+    '2026/09/09 +CUOTA DE MANEJO 41.900,00 0,00 0,00 0,00% 0,00% 0/0',
+    '2026/09/09 +SEG DEUD IVA INCL 3.250,00 0,00 0,00 0,00% 0,00% 0/0',
+    'Número de tarjeta: ************9999',
+    'En caso de pago con cheque girar a nombre de TUYA S.A NIT 000000000-0',
+  ]
+  const { bank, items } = statementFromPdfLines(lines)
+  const by = (m: string) => items.find((i) => i.parsed.merchant === m)
+
+  it('reconoce que es de Tuya y lee todas las filas', () => {
+    expect(bank).toBe('Tuya')
+    expect(items).toHaveLength(8)
+  })
+
+  it('las compras son gastos por el valor total de la compra', () => {
+    expect(by('CAPCUT')?.parsed).toMatchObject({ kind: 'gasto', amount: 59900, date: '2026-08-07', account: 'T. Crédito *9999' })
+    expect(by('GOOGLE *Google One')?.parsed.amount).toBe(19900)
+    expect(by('ADOBE')?.parsed.amount).toBe(93058)
+    expect(by('Cuota de manejo Tuya')?.parsed.amount).toBe(41900)
+    expect(by('Seguro deudores Tuya')?.parsed.amount).toBe(3250)
+  })
+
+  it('el pago a la tarjeta es entre tus cuentas, no un ingreso', () => {
+    expect(by('Pago a la tarjeta Tuya')).toMatchObject({ own: true, parsed: { amount: 672755 } })
+    expect(by('Ajuste o devolución Tuya')).toMatchObject({ own: false, parsed: { kind: 'ingreso', amount: 1259 } })
+  })
+
+  it('una compra a cuotas tiene el mismo id en el extracto siguiente', () => {
+    const next = statementFromPdfLines([...lines.slice(0, 2), '2026/09/06 +COMPRA INTERNACIONA | CapCut 59.900,00 56.000,00 2.236,11 2,15% 29,20% 2/36', ...lines.slice(-2)])
+    expect(next.items[0].id).toBe(by('CapCut')!.id)
   })
 })
