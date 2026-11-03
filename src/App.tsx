@@ -1,0 +1,119 @@
+import { useEffect, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db, movementsInMonth, type Movement } from './data/db'
+import { handleDeepLink } from './import/deeplink'
+import { currentMonth, monthLabel, shiftMonth } from './lib/format'
+import { Summary } from './screens/Summary'
+import { Movements } from './screens/Movements'
+import { Inbox } from './screens/Inbox'
+import { Budget } from './screens/Budget'
+import { Settings } from './screens/Settings'
+import { MovementSheet } from './components/MovementSheet'
+
+type Tab = 'resumen' | 'movimientos' | 'revisar' | 'presupuesto' | 'ajustes'
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'resumen', label: 'Resumen', icon: '◎' },
+  { id: 'movimientos', label: 'Movimientos', icon: '≡' },
+  { id: 'revisar', label: 'Revisar', icon: '⇣' },
+  { id: 'presupuesto', label: 'Presupuesto', icon: '◔' },
+  { id: 'ajustes', label: 'Ajustes', icon: '⚙' },
+]
+
+// Sin mes en Revisar y Ajustes: muestran todo.
+const MONTHLESS: Tab[] = ['revisar', 'ajustes']
+
+function readTab(): Tab {
+  try {
+    const t = localStorage.getItem('tab') as Tab | null
+    return t && TABS.some((x) => x.id === t) ? t : 'resumen'
+  } catch {
+    return 'resumen'
+  }
+}
+
+export default function App() {
+  const [tab, setTabState] = useState<Tab>(readTab)
+  const [month, setMonth] = useState(currentMonth)
+  const [editing, setEditing] = useState<Movement | 'new' | null>(null)
+  const movements = useLiveQuery(() => movementsInMonth(month), [month])
+  const pendingCount = useLiveQuery(() => db.inbox.where('status').equals('pendiente').count(), []) ?? 0
+  const [toast, setToast] = useState('')
+
+  const setTab = (t: Tab) => {
+    setTabState(t)
+    try {
+      localStorage.setItem('tab', t)
+    } catch {
+      /* sin almacenamiento: solo no recordamos la pestaña */
+    }
+  }
+
+  useEffect(() => {
+    const run = () =>
+      handleDeepLink().then((msg) => {
+        if (!msg) return
+        setTabState('revisar')
+        setToast(msg)
+        setTimeout(() => setToast(''), 3500)
+      })
+    run()
+    window.addEventListener('hashchange', run)
+    return () => window.removeEventListener('hashchange', run)
+  }, [])
+
+  return (
+    <div className="app">
+      <header className="topbar">
+        <h1>Mis finanzas</h1>
+        {!MONTHLESS.includes(tab) && (
+          <div className="month-picker">
+            <button aria-label="Mes anterior" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+            <span>{monthLabel(month)}</span>
+            <button aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
+          </div>
+        )}
+      </header>
+
+      <main className="content">
+        {movements === undefined ? null : tab === 'resumen' ? (
+          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} />
+        ) : tab === 'movimientos' ? (
+          <Movements movements={movements} onEdit={setEditing} />
+        ) : tab === 'revisar' ? (
+          <Inbox onGoToSettings={() => setTab('ajustes')} />
+        ) : tab === 'presupuesto' ? (
+          <Budget month={month} movements={movements} />
+        ) : (
+          <Settings />
+        )}
+      </main>
+
+      {toast && <div className="toast">{toast}</div>}
+
+      {!MONTHLESS.includes(tab) && (
+        <button className="fab" aria-label="Agregar movimiento" onClick={() => setEditing('new')}>+</button>
+      )}
+
+      <nav className="tabbar">
+        {TABS.map((t) => (
+          <button key={t.id} className={t.id === tab ? 'active' : ''} onClick={() => setTab(t.id)}>
+            <span className="tab-icon">
+              {t.icon}
+              {t.id === 'revisar' && pendingCount > 0 && <span className="badge">{pendingCount}</span>}
+            </span>
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {editing && (
+        <MovementSheet
+          movement={editing === 'new' ? null : editing}
+          month={month}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </div>
+  )
+}
