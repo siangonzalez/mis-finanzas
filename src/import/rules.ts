@@ -49,6 +49,9 @@ const DEFAULTS: [RegExp, Kind, Suggestion][] = [
   [/CLARO|MOVISTAR|TIGO|\bETB\b|WOM/, 'gasto', { category: 'Hogar', subcategory: 'Internet' }],
   [/CONJ|CONJUNTO|ADMINISTRACION|PROPIEDAD HORIZONTAL/, 'gasto', { category: 'Hogar', subcategory: 'Administración' }],
   [/DAVIVIENDA|CARTERA|TARJETA|BANCO|TUYA|NU COLOMBIA|CREDITO/, 'gasto', { category: 'Deudas', subcategory: 'Tarjeta de crédito' }],
+  [/PAPELERIA|LIBRERIA|PANAMERICANA/, 'gasto', { category: 'Educación', subcategory: 'Materiales' }],
+  [/FERRETERIA|HOMECENTER|CONSTRUCTOR/, 'gasto', { category: 'Hogar', subcategory: 'Otros' }],
+  [/4X1000|GRAVAMEN/, 'gasto', { category: 'Otros', subcategory: 'Otros' }],
   [/^RETIRO/, 'gasto', { category: 'Otros', subcategory: 'Otros' }],
 ]
 
@@ -57,7 +60,9 @@ export function suggestCategory(merchant: string, kind: Kind, userRules: UserRul
   const own = userRules.find((r) => r.kind === kind && r.key === key)
   if (own) return { category: own.category, subcategory: own.subcategory }
 
-  if (kind === 'ingreso') return { category: 'Otros', subcategory: 'Otros' }
+  if (kind === 'ingreso') {
+    return /INTERES|RENDIMIENTO/i.test(merchant) ? { category: 'Dividendos', subcategory: 'Intereses' } : { category: 'Otros', subcategory: 'Otros' }
+  }
 
   const upper = merchant.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   for (const [re, k, s] of DEFAULTS) if (k === kind && re.test(upper)) return s

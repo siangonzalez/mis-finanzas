@@ -1,0 +1,122 @@
+import { strFromU8, unzipSync } from 'fflate'
+import { parseAmount, type ParsedAlert } from './parsers'
+
+// Extractos mensuales de Nequi en Word (.docx). Cada tabla tiene las columnas
+// Fecha del movimiento | Descripción | Valor | Saldo.
+
+export interface StatementRow {
+  date: string // YYYY-MM-DD
+  description: string
+  amount: number // con signo: negativo = sale plata
+  balance: number
+}
+
+export interface StatementItem {
+  id: string
+  parsed: ParsedAlert
+  own: boolean // entre tus propias cuentas: no es gasto ni ingreso
+}
+
+function decode(s: string) {
+  return s
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, '&')
+}
+
+function cellText(xml: string) {
+  return decode([...xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map((m) => m[1]).join('')).trim()
+}
+
+function signed(raw: string) {
+  const n = parseAmount(raw)
+  return /-/.test(raw) ? -n : n
+}
+
+// Lee las filas de movimientos del XML del documento.
+export function rowsFromDocumentXml(xml: string): StatementRow[] {
+  const rows: StatementRow[] = []
+  for (const tr of xml.match(/<w:tr[\s>][\s\S]*?<\/w:tr>/g) ?? []) {
+    const cells = (tr.match(/<w:tc[\s>][\s\S]*?<\/w:tc>/g) ?? []).map(cellText)
+    const date = cells[0]?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (cells.length !== 4 || !date) continue
+    rows.push({ date: `${date[3]}-${date[2]}-${date[1]}`, description: cells[1], amount: signed(cells[2]), balance: signed(cells[3]) })
+  }
+  return rows
+}
+
+export function readNequiDocx(file: ArrayBuffer): StatementRow[] {
+  const files = unzipSync(new Uint8Array(file), { filter: (f) => f.name === 'word/document.xml' })
+  const xml = files['word/document.xml']
+  if (!xml) throw new Error('El archivo no parece un documento de Word.')
+  const text = strFromU8(xml)
+  if (!/dep[oó]sito de bajo monto|NEQUI/i.test(text)) throw new Error('No parece un extracto de Nequi.')
+  return rowsFromDocumentXml(text)
+}
+
+function title(s: string) {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+// Convierte una fila en un movimiento para revisar. El 4x1000 se agrupa aparte.
+export function classifyNequiRow(r: StatementRow): { parsed: ParsedAlert; own: boolean } | 'gmf' {
+  const d = title(r.description)
+  const out = r.amount < 0
+  const base = { bank: 'Nequi', role: 'movimiento' as const, amount: Math.abs(r.amount), date: r.date, account: 'Extracto' }
+  if (/^GRAVAMEN/i.test(d)) return 'gmf'
+
+  // El extracto enmascara tu propio nombre ("SIA*** LEO***") y las recargas
+  // vienen de tus otras cuentas.
+  if (/\*\*\*/.test(d) || /^Recarga desde/i.test(d)) {
+    return { own: true, parsed: { ...base, kind: out ? 'gasto' : 'ingreso', type: out ? 'transferencia-enviada' : 'transferencia-recibida', merchant: out ? 'Envío a otra cuenta tuya' : d } }
+  }
+  if (/^Pago de Intereses/i.test(d)) {
+    return { own: false, parsed: { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Intereses Nequi' } }
+  }
+
+  let m: RegExpMatchArray | null
+  if ((m = d.match(/^PAGO EN QR BRE-B:?\s*(.*)$/i))) {
+    return { own: false, parsed: { ...base, kind: 'gasto', type: 'compra', merchant: m[1] ? m[1] : 'Pago con QR' } }
+  }
+  if ((m = d.match(/^COMPRA PSE EN\s+(.*)$/i))) {
+    return { own: false, parsed: { ...base, kind: 'gasto', type: 'pago', merchant: m[1] } }
+  }
+  if ((m = d.match(/^(?:ENVIO CON BRE-B A:|Para)\s+(.*)$/i))) {
+    return { own: false, parsed: { ...base, kind: 'gasto', type: 'transferencia-enviada', merchant: `Transferencia a ${m[1]}` } }
+  }
+  if ((m = d.match(/^De\s+(.*)$/))) {
+    return { own: false, parsed: { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: m[1] } }
+  }
+  return { own: false, parsed: { ...base, kind: out ? 'gasto' : 'ingreso', type: out ? 'compra' : 'transferencia-recibida', merchant: d } }
+}
+
+const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+
+export function statementItems(rows: StatementRow[]): StatementItem[] {
+  const items: StatementItem[] = []
+  const gmf = new Map<string, { total: number; last: string }>()
+  for (const r of rows) {
+    const c = classifyNequiRow(r)
+    if (c === 'gmf') {
+      const month = r.date.slice(0, 7)
+      const g = gmf.get(month) ?? { total: 0, last: r.date }
+      g.total += Math.abs(r.amount)
+      if (r.date > g.last) g.last = r.date
+      gmf.set(month, g)
+      continue
+    }
+    // El saldo después del movimiento hace único el id aunque haya dos iguales el mismo día.
+    items.push({ id: `extracto-nequi-${r.date}-${Math.round(r.amount * 100)}-${Math.round(r.balance * 100)}`, ...c })
+  }
+  for (const [month, g] of gmf) {
+    items.push({
+      id: `extracto-nequi-gmf-${month}`,
+      own: false,
+      parsed: {
+        bank: 'Nequi', role: 'movimiento', kind: 'gasto', type: 'pago', account: 'Extracto',
+        amount: Math.round(g.total), date: g.last, merchant: `4x1000 de ${MONTHS[Number(month.slice(5)) - 1]}`,
+      },
+    })
+  }
+  return items
+}

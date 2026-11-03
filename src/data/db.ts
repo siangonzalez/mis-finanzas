@@ -29,7 +29,8 @@ export interface Budget {
   amount: number
 }
 
-export type InboxStatus = 'pendiente' | 'aceptado' | 'ignorado' | 'duplicado'
+// 'propia': movimiento entre tus propias cuentas (no es gasto ni ingreso).
+export type InboxStatus = 'pendiente' | 'aceptado' | 'ignorado' | 'duplicado' | 'propia'
 
 // Movimiento detectado automáticamente (correo, Apple Pay, alerta pegada),
 // esperando a que lo revises antes de entrar a tus cuentas.

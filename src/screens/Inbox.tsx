@@ -1,9 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { categoriesFor, findCategory } from '../data/categories'
 import { db, type InboxItem } from '../data/db'
 import { syncGmail, isGmailConfigured } from '../import/gmail'
-import { accept, acceptAll, ignore, ingest, restore, updateSuggestion } from '../import/inbox'
+import { accept, acceptAll, ignore, ingest, ingestStatement, restore, updateSuggestion } from '../import/inbox'
+import { readNequiDocx, statementItems } from '../import/statements'
 import { dayLabel, money } from '../lib/format'
 
 const SOURCE_LABEL: Record<InboxItem['source'], string> = {
@@ -16,6 +17,9 @@ const SOURCE_LABEL: Record<InboxItem['source'], string> = {
 export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
   const pending = useLiveQuery(() => db.inbox.where('status').equals('pendiente').sortBy('date'), []) ?? []
   const duplicates = useLiveQuery(() => db.inbox.where('status').equals('duplicado').reverse().sortBy('date'), []) ?? []
+  const ownTransfers = useLiveQuery(() => db.inbox.where('status').equals('propia').reverse().sortBy('date'), []) ?? []
+  const [showOwn, setShowOwn] = useState(false)
+  const statementRef = useRef<HTMLInputElement>(null)
   const gmailReady = useLiveQuery(isGmailConfigured, [])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -41,6 +45,30 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     if (added) setPasted('')
   }
 
+  const loadStatements = async (files: FileList) => {
+    setBusy(true)
+    let added = 0, own = 0, repeated = 0, rows = 0
+    try {
+      for (const f of Array.from(files)) {
+        const r = readNequiDocx(await f.arrayBuffer())
+        rows += r.length
+        const res = await ingestStatement(statementItems(r))
+        added += res.added
+        own += res.own
+        repeated += res.repeated
+      }
+      setMessage(
+        `Leí ${rows} movimientos: ${added} nuevos para revisar` +
+          (repeated ? `, ${repeated} que ya tenías por correo` : '') +
+          (own ? ` y ${own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.',
+      )
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'No pude leer el extracto.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const acceptEverything = async () => {
     const n = await acceptAll()
     setMessage(`Agregaste ${n} movimientos a tus cuentas.`)
@@ -60,6 +88,20 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
             </div>
           </>
         )}
+        <div className="stack">
+          <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>Cargar extracto de Nequi (.docx)</button>
+        </div>
+        <input
+          ref={statementRef}
+          type="file"
+          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          multiple
+          hidden
+          onChange={(e) => {
+            if (e.target.files?.length) void loadStatements(e.target.files)
+            e.target.value = ''
+          }}
+        />
         {message && <p className="pill">{message}</p>}
       </section>
 
@@ -88,6 +130,30 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         />
         <button className="ghost" disabled={!pasted.trim()} onClick={addPasted}>Agregar</button>
       </details>
+
+      {ownTransfers.length > 0 && (
+        <section className="card">
+          <button className="link" onClick={() => setShowOwn(!showOwn)}>
+            {showOwn ? 'Ocultar' : 'Ver'} {ownTransfers.length === 1 ? '1 movimiento' : `${ownTransfers.length} movimientos`} entre tus cuentas
+          </button>
+          <p className="muted small">Pasar plata de una cuenta tuya a otra no es gasto ni ingreso, así que no se suma.</p>
+          {showOwn && (
+            <ul className="list-plain dupes">
+              {ownTransfers.map((d) => (
+                <li key={d.id}>
+                  <span>
+                    <b>{d.merchant}</b>
+                    <span className="muted small"> · {d.bank} · {d.date}</span>
+                  </span>
+                  <span>
+                    {d.kind === 'ingreso' ? '+' : '−'}{money(d.amount)} <button className="link" onClick={() => restore(d)}>Sí cuenta</button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {duplicates.length > 0 && (
         <section className="card">

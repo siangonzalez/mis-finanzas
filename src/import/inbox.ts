@@ -76,6 +76,35 @@ export async function ingest(raws: IncomingRaw[]) {
   return added
 }
 
+// Movimientos de un extracto. Los que son entre tus cuentas quedan aparte.
+export async function ingestStatement(items: { id: string; parsed: ParsedAlert; own: boolean }[]) {
+  let added = 0
+  let own = 0
+  let repeated = 0
+  for (const it of items) {
+    if (await db.inbox.get(it.id)) continue
+    const item = await toItem(it.id, 'extracto', it.parsed, Date.now())
+    if (it.own) {
+      item.status = 'propia'
+      await db.inbox.add(item)
+      own++
+      // La otra punta (por ejemplo, "Transferiste … a Nequi" de Bancolombia)
+      // también es entre tus cuentas.
+      const near = await db.inbox.where('date').between(shiftDate(item.date, -1), shiftDate(item.date, 1), true, true).toArray()
+      for (const x of near) {
+        if (x.status === 'pendiente' && x.source !== 'extracto' && x.amount === item.amount && x.kind !== item.kind) {
+          await db.inbox.update(x.id, { status: 'propia' })
+        }
+      }
+      continue
+    }
+    await addWithDedupe(item)
+    if (item.status === 'pendiente') added++
+    else repeated++
+  }
+  return { added, own, repeated }
+}
+
 export async function ingestParsed(id: string, source: InboxItem['source'], parsed: ParsedAlert) {
   if (await db.inbox.get(id)) return false
   const item = await toItem(id, source, parsed, Date.now())
