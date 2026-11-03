@@ -1,4 +1,5 @@
 import { DebtReminder } from '../components/DebtReminder'
+import { DiagnosisLink } from './Diagnosis'
 import { findCategory } from '../data/categories'
 import type { Movement } from '../data/db'
 import { currentMonth, daysInMonth, money } from '../lib/format'
@@ -9,15 +10,17 @@ interface Props {
   movements: Movement[]
   onAdd: () => void
   onOpenDebts: () => void
+  onOpenDiagnosis: () => void
 }
 
-export function Summary({ month, movements, onAdd, onOpenDebts }: Props) {
+export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis }: Props) {
   const s = monthStats(movements)
 
   if (movements.length === 0) {
     return (
       <>
       <DebtReminder onOpen={onOpenDebts} />
+      <DiagnosisLink onOpen={onOpenDiagnosis} />
       <section className="empty">
         <p className="big-emoji">🐷</p>
         <h2>Organiza la casa</h2>
@@ -51,6 +54,7 @@ export function Summary({ month, movements, onAdd, onOpenDebts }: Props) {
       </section>
 
       <DebtReminder onOpen={onOpenDebts} />
+      <DiagnosisLink onOpen={onOpenDiagnosis} />
 
       <section className="grid2">
         <div className="card stat">

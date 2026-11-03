@@ -281,6 +281,10 @@ export async function movementsInYear(year: string) {
   return (await db.movs.where('date').between(`${year}-01-01`, `${year}-12-31`, true, true).toArray()).filter(alive)
 }
 
+export async function movementsSince(date: string) {
+  return (await db.movs.where('date').aboveOrEqual(date).toArray()).filter(alive)
+}
+
 export async function saveMovement(m: Movement) {
   const id = m.id ?? newId()
   await db.movs.put({ ...m, id, deleted: false })

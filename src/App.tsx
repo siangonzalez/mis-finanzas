@@ -9,10 +9,11 @@ import { Movements } from './screens/Movements'
 import { Inbox } from './screens/Inbox'
 import { Budget } from './screens/Budget'
 import { Debts } from './screens/Debts'
+import { Diagnosis } from './screens/Diagnosis'
 import { Settings } from './screens/Settings'
 import { MovementSheet } from './components/MovementSheet'
 
-type Tab = 'resumen' | 'movimientos' | 'revisar' | 'presupuesto' | 'deudas' | 'ajustes'
+type Tab = 'resumen' | 'movimientos' | 'revisar' | 'presupuesto' | 'deudas' | 'diagnostico' | 'ajustes'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'resumen', label: 'Resumen', icon: '◎' },
@@ -22,13 +23,15 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'deudas', label: 'Deudas', icon: '⇄' },
 ]
 
-// Sin mes en Revisar, Deudas y Ajustes: muestran todo.
-const MONTHLESS: Tab[] = ['revisar', 'deudas', 'ajustes']
+// Sin mes en Revisar, Deudas, Diagnóstico y Ajustes: muestran todo.
+const MONTHLESS: Tab[] = ['revisar', 'deudas', 'diagnostico', 'ajustes']
+// Pantallas que se abren desde otra, sin botón en la barra de abajo.
+const EXTRA_TABS: Tab[] = ['diagnostico', 'ajustes']
 
 function readTab(): Tab {
   try {
     const t = localStorage.getItem('tab') as Tab | null
-    return t && (t === 'ajustes' || TABS.some((x) => x.id === t)) ? t : 'resumen'
+    return t && (EXTRA_TABS.includes(t) || TABS.some((x) => x.id === t)) ? t : 'resumen'
   } catch {
     return 'resumen'
   }
@@ -69,7 +72,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>{tab === 'ajustes' ? 'Ajustes' : 'Mis finanzas'}</h1>
+        <h1>{tab === 'ajustes' ? 'Ajustes' : tab === 'diagnostico' ? 'Diagnóstico' : 'Mis finanzas'}</h1>
         <div className="topbar-right">
           {!MONTHLESS.includes(tab) && (
             <div className="month-picker">
@@ -90,7 +93,7 @@ export default function App() {
 
       <main className="content">
         {movements === undefined ? null : tab === 'resumen' ? (
-          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} onOpenDebts={() => setTab('deudas')} />
+          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} onOpenDebts={() => setTab('deudas')} onOpenDiagnosis={() => setTab('diagnostico')} />
         ) : tab === 'movimientos' ? (
           <Movements movements={movements} onEdit={setEditing} />
         ) : tab === 'revisar' ? (
@@ -99,6 +102,8 @@ export default function App() {
           <Budget month={month} movements={movements} />
         ) : tab === 'deudas' ? (
           <Debts />
+        ) : tab === 'diagnostico' ? (
+          <Diagnosis onGo={setTab} />
         ) : (
           <Settings />
         )}

@@ -8,6 +8,7 @@ En el iPhone, ábrela en Safari, toca Compartir y luego "Agregar a pantalla de i
 ## Fase 1 (lista)
 
 - **Resumen:** "¿Cuánto te queda?", cuánto puedes gastar al día, ingresos vs. gastos, fijos vs. ocasionales, gastos hormiga (≤ $20.000) con proyección anual, gasto por categoría y origen de los ingresos.
+- **Diagnóstico** (se abre desde el Resumen): reglas fijas en `src/lib/diagnosis.ts`, calculadas en el dispositivo, sobre tus gastos, deudas, intereses, cuentas de cobro y presupuesto. Muestra hechos, cálculos y opciones; no dice en qué invertir ni reemplaza a un asesor.
 - **Movimientos:** lista por día, filtros, búsqueda, editar y eliminar.
 - **Presupuesto:** monto por categoría, barra de avance y "copiar del mes anterior".
 - **Ajustes:** copia de seguridad (JSON), restaurar, exportar a Excel (CSV) y borrar todo.
