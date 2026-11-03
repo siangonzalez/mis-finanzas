@@ -59,6 +59,18 @@ export function Settings() {
     <>
       <GmailSettings />
       <SyncSettings />
+      <details className="card">
+        <summary>Recordatorios de pagos por correo</summary>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Tu script de Google te escribe cada mañana cuando una tarjeta, el crédito o una cuota de deuda vence en 3 días, mañana
+          u hoy, y cada 3 días si algo sigue vencido. No avisa lo que ya pagaste (usa tus alertas y el "Ya pagué" de Deudas).
+        </p>
+        <ol className="steps">
+          <li>Pega el código nuevo del script y crea una <b>Nueva versión</b> de la implementación.</li>
+          <li>En el editor, ejecuta <b>activarRecordatorios</b> y acepta los permisos.</li>
+          <li>Te llega un correo de prueba con lo que tienes pendiente hoy.</li>
+        </ol>
+      </details>
       <ShortcutSettings />
 
       <section className="card">

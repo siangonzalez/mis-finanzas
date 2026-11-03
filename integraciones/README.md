@@ -33,6 +33,18 @@ Solo responde cuando la app presenta tu clave secreta.
 
 Para agregar otro banco, súmalo a la lista `SENDERS` del script y crea una nueva versión de la misma forma. La app solo entiende los formatos que ya conoce; si llega otro, avísame con un ejemplo.
 
+### Recordatorios de pagos por correo
+
+El script te escribe a tu Gmail cada mañana (7 a. m., hora de Colombia) cuando una tarjeta, el crédito o la cuota de una deuda vence en 3 días, mañana u hoy, y cada 3 días mientras algo siga vencido. No te avisa lo que ya pagaste: usa los pagos que llegaron en tus alertas después de la fecha de corte y el **"Ya pagué"** que marques en Deudas.
+
+Para activarlos (una sola vez):
+
+1. Pega el código nuevo del script y crea una **Nueva versión** de la implementación (como en "Actualizar el script").
+2. En el editor, elige la función **`activarRecordatorios`** y dale **Ejecutar**. Google te pide dos permisos nuevos: **enviar correo como tú** (solo a ti mismo) y **ejecutarse cuando no estás** (para el aviso diario). Revisa y acepta.
+3. Te llega un correo **"Mis finanzas: recordatorios activados"** con lo que tienes pendiente hoy.
+
+Para ver la lista sin mandar correos, ejecuta `verRecordatorios` y mira el registro. Para apagarlos, ejecuta `desactivarRecordatorios`.
+
 ### Sincronización entre tus dispositivos
 
 Con el script conectado, la app sincroniza sola los movimientos, Revisar, el presupuesto, las reglas de categorías y las tarjetas entre tu PC y tu iPhone. Lo hace al abrir la app, al volver a ella y unos segundos después de cada cambio. Todo queda en la pestaña **datos** de tu hoja, una fila por registro. Si cambias lo mismo en dos dispositivos, gana el cambio más reciente. Para un dispositivo nuevo, basta con pegar la URL y la clave en **⚙ → Cuenta de Google**: baja todo lo que ya tienes.

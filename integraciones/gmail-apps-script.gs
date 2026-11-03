@@ -10,7 +10,9 @@
  *  - Sincronización: en la pestaña "datos" de esa misma hoja guarda tus
  *    movimientos, la bandeja, el presupuesto, las reglas y las tarjetas, para
  *    que todos tus dispositivos tengan lo mismo.
- * No envía correos ni comparte nada.
+ *  - Recordatorios: si ejecutas activarRecordatorios, te escribe cada mañana
+ *    cuando una tarjeta, crédito o deuda está por vencer o se venció.
+ * Solo te envía correos a ti (los recordatorios) y no comparte nada.
  *
  * Instalación: ver integraciones/README.md
  */
@@ -254,6 +256,192 @@ function sincronizar(since, changes) {
     if (Number(values[j][3]) > (Number(since) || 0)) out.push({ table: values[j][0], rec: JSON.parse(values[j][4]) });
   }
   return { now: now, changes: out };
+}
+
+// ── Recordatorios de pagos por correo ────────────────────────────────────
+// Todos los días (7 a. m.) revisa tarjetas, créditos y deudas, y te escribe
+// solo si algo vence en 3 días, mañana u hoy, o si se venció sin pagar
+// (cada 3 días). Lo que ya pagaste no se avisa: usa los pagos que llegaron en
+// tus alertas y el "Ya pagué" que marques en la app.
+
+var APP_URL = 'https://siangonzalez.github.io/mis-finanzas/';
+var ZONA = 'America/Bogota';
+
+/** Ejecútala una vez: programa el correo diario y te manda uno de prueba. */
+function activarRecordatorios() {
+  desactivarRecordatorios();
+  ScriptApp.newTrigger('revisarPagos').timeBased().everyDays(1).atHour(7).inTimezone(ZONA).create();
+  var lista = obligacionesDeHoy();
+  enviarCorreo(lista, true);
+  Logger.log('Recordatorios activados. Te llegará un correo cada mañana cuando haya algo por pagar.');
+}
+
+/** Para dejar de recibir los correos. */
+function desactivarRecordatorios() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'revisarPagos') ScriptApp.deleteTrigger(t);
+  });
+}
+
+/** Muestra en el registro lo que vence, sin mandar correos. */
+function verRecordatorios() {
+  obligacionesDeHoy().forEach(function (o) {
+    Logger.log(o.titulo + ' · ' + pesos(o.monto) + ' · ' + cuando(o.dias) + (o.nota ? ' · ' + o.nota : ''));
+  });
+}
+
+function revisarPagos() {
+  var hoy = hoyISO();
+  var props = PropertiesService.getScriptProperties();
+  var enviados = JSON.parse(props.getProperty('AVISOS') || '{}');
+  var avisar = obligacionesDeHoy().filter(function (o) {
+    if (!(o.dias <= 3)) return false;
+    var ultimo = enviados[o.clave];
+    if (o.dias >= 0) return (o.dias === 3 || o.dias === 1 || o.dias === 0) && ultimo !== hoy;
+    return !ultimo || diasEntre(ultimo, hoy) >= 3; // vencido: cada 3 días
+  });
+  if (!avisar.length) return;
+  enviarCorreo(avisar, false);
+  avisar.forEach(function (o) { enviados[o.clave] = hoy; });
+  // Se olvidan los avisos de hace más de 60 días.
+  Object.keys(enviados).forEach(function (k) { if (diasEntre(enviados[k], hoy) > 60) delete enviados[k]; });
+  props.setProperty('AVISOS', JSON.stringify(enviados));
+}
+
+function obligacionesDeHoy() {
+  return obligaciones(leerTabla('cards'), leerTabla('inbox'), leerDeudas(), hoyISO());
+}
+
+// Lo que tienes por pagar, con los días que faltan (negativo = vencido).
+function obligaciones(cards, inbox, debts, hoy) {
+  var out = [];
+  cards.forEach(function (c) {
+    if (!c.dueDate || !(c.minPayment > 0) || !(c.totalDebt >= 1000)) return;
+    var prestamo = c.kind === 'prestamo';
+    var nombre = (prestamo ? 'Cuota crédito ' : 'Tarjeta ') + c.bank + ' *' + c.last4;
+    var pagado = pagadoDesde(c, inbox, c.cutDate);
+    if (pagado < c.minPayment * 0.98) {
+      out.push({
+        clave: c.id + '|' + c.dueDate, titulo: nombre, monto: c.minPayment - pagado, vence: c.dueDate,
+        dias: diasEntre(hoy, c.dueDate),
+        nota: prestamo ? 'cuota del mes' : (pagado > 0 ? 'te falta para el mínimo' : 'pago mínimo'),
+      });
+    } else if (prestamo && hoy >= c.dueDate) {
+      // La cuota del crédito es el mismo día cada mes: si ya pagaste esta, sigue la próxima.
+      var proxima = sumarMes(c.dueDate);
+      if (pagadoDesde(c, inbox, c.dueDate) < c.minPayment * 0.98) {
+        out.push({ clave: c.id + '|' + proxima, titulo: nombre, monto: c.minPayment, vence: proxima, dias: diasEntre(hoy, proxima), nota: 'cuota del mes (estimada)' });
+      }
+    }
+  });
+  debts.forEach(function (d) {
+    if (d.direction !== 'debo' || !(d.installment > 0)) return;
+    var c = cuotas(d, hoy);
+    if (c.atrasadas.length) {
+      out.push({
+        clave: d.id + '|atrasadas|' + c.atrasadas.length, titulo: 'Cuotas atrasadas con ' + d.name,
+        monto: d.installment * c.atrasadas.length, vence: c.atrasadas[0], dias: diasEntre(hoy, c.atrasadas[0]),
+        nota: c.atrasadas.length + (c.atrasadas.length === 1 ? ' cuota' : ' cuotas'),
+      });
+    }
+    if (c.proxima) out.push({ clave: d.id + '|' + c.proxima, titulo: 'Cuota de ' + d.name, monto: d.installment, vence: c.proxima, dias: diasEntre(hoy, c.proxima), nota: '' });
+  });
+  return out.sort(function (a, b) { return a.dias - b.dias; });
+}
+
+// Pagos a ese banco después de una fecha, sin contar comprobantes repetidos
+// (mismo criterio que la app, src/lib/cards.ts).
+var PAGOS_A = {
+  Tuya: /FINANCIAMIENTO\s+TUY|\bTUYA\s+S\.?\s?A\b|PAGO A LA TARJETA TUYA|TARJETA\s+(CARULLA|[EÉ]XITO)/i,
+  Davivienda: /BANCO DAVIVIENDA|DAVIVIENDA\s+(CARTERA|ZONA|CR[EÉ]DITO)/i,
+  Bancolombia: /PAGO A LA TARJETA BANCOLOMBIA|ABONO TARJETA|T\.?\s?CR[EÉ]D/i,
+};
+
+function pagadoDesde(c, inbox, desde) {
+  var re = PAGOS_A[c.bank];
+  var total = 0;
+  if (re) {
+    inbox.forEach(function (i) {
+      if (i.kind === 'gasto' && i.status !== 'ignorado' && i.status !== 'duplicado' && i.bank !== c.bank && i.date > desde && re.test(i.merchant || '')) total += i.amount;
+    });
+  }
+  if (c.manualPayment && c.manualPayment.date > desde) total += c.manualPayment.amount;
+  return total;
+}
+
+// Cuotas vencidas sin pagar y la próxima (mismo cálculo que la app, src/lib/debt.ts).
+function cuotas(d, hoy) {
+  var primero = (d.disbursements || []).map(function (x) { return x.date; }).sort()[0];
+  if (!primero) return { atrasadas: [], proxima: '' };
+  var y = Number(primero.slice(0, 4)), m = Number(primero.slice(5, 7));
+  var vencidas = [], proxima = '';
+  while (!proxima) {
+    m++;
+    if (m > 12) { m = 1; y++; }
+    var f = y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d.dueDay).slice(-2);
+    if (f >= hoy) proxima = f; else vencidas.push(f); // el día del vencimiento todavía no es atraso
+  }
+  var cubiertas = (d.payments || []).reduce(function (n, p) { return n + Math.round(p.amount / d.installment); }, 0);
+  var deben = Math.max(0, vencidas.length - cubiertas);
+  return { atrasadas: deben ? vencidas.slice(-deben) : [], proxima: proxima };
+}
+
+function leerTabla(nombre) {
+  var sh = libro().getSheetByName('datos');
+  return sh.getDataRange().getValues().slice(1)
+    .filter(function (r) { return r[0] === nombre; })
+    .map(function (r) { return JSON.parse(r[4]); })
+    .filter(function (x) { return !x.deleted; });
+}
+
+function enviarCorreo(lista, prueba) {
+  var vencidos = lista.filter(function (o) { return o.dias < 0; }).length;
+  var asunto = prueba
+    ? 'Mis finanzas: recordatorios activados'
+    : (vencidos ? '⚠️ ' : '⏰ ') + (lista.length === 1 ? lista[0].titulo + ' · ' + cuando(lista[0].dias) : lista.length + ' pagos por atender');
+  var filas = lista.map(function (o) {
+    var color = o.dias < 0 ? '#c0392b' : o.dias <= 1 ? '#b9770e' : '#555';
+    return '<tr><td style="padding:8px 0"><b>' + o.titulo + '</b><br><span style="color:#777;font-size:13px">' + (o.nota || '') +
+      (o.dias < 0 ? ' · desde el ' : ' · vence el ') + fechaLarga(o.vence) + '</span></td><td style="padding:8px 0 8px 16px;text-align:right;white-space:nowrap"><b>' + pesos(o.monto) +
+      '</b><br><span style="color:' + color + ';font-size:13px">' + cuando(o.dias) + '</span></td></tr>';
+  }).join('');
+  var html = '<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:480px">' +
+    (prueba ? '<p>Listo: te escribiré cada mañana cuando algo esté por vencer o se haya vencido. Hoy tienes esto pendiente:</p>' : '') +
+    (lista.length ? '<table style="width:100%;border-collapse:collapse">' + filas + '</table>' : '<p>No tienes pagos pendientes. 🎉</p>') +
+    '<p style="margin-top:16px"><a href="' + APP_URL + '">Abrir Mis finanzas</a></p>' +
+    '<p style="color:#999;font-size:12px">Si ya pagaste algo que no llegó por correo (por ejemplo, la tarjeta Bancolombia), márcalo con "Ya pagué" en Deudas y no te volveré a avisar.</p></div>';
+  MailApp.sendEmail({ to: Session.getEffectiveUser().getEmail(), subject: asunto, htmlBody: html, name: 'Mis finanzas' });
+}
+
+function cuando(dias) {
+  if (dias < 0) return 'venció hace ' + -dias + (dias === -1 ? ' día' : ' días');
+  if (dias === 0) return 'vence hoy';
+  if (dias === 1) return 'vence mañana';
+  return 'en ' + dias + ' días';
+}
+
+function pesos(n) {
+  return '$' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fechaLarga(iso) {
+  return Number(iso.slice(8, 10)) + ' ' + MESES[Number(iso.slice(5, 7)) - 1];
+}
+
+function hoyISO() {
+  return Utilities.formatDate(new Date(), ZONA, 'yyyy-MM-dd');
+}
+
+function diasEntre(a, b) {
+  return Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 86400000);
+}
+
+function sumarMes(iso) {
+  var y = Number(iso.slice(0, 4)), m = Number(iso.slice(5, 7)) + 1, d = Number(iso.slice(8, 10));
+  if (m > 12) { m = 1; y++; }
+  var ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + Math.min(d, ultimo)).slice(-2);
 }
 
 function json(obj) {

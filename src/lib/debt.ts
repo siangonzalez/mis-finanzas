@@ -111,7 +111,7 @@ export function overdueInstallments(t: DebtTerms, today: string) {
       y++
     }
     const d = `${y}-${String(m).padStart(2, '0')}-${String(t.dueDay).padStart(2, '0')}`
-    if (d > today) next = d
+    if (d >= today) next = d // el día del vencimiento todavía no es atraso
     else due.push(d)
   }
   const covered = t.payments.reduce((n, p) => n + Math.round(p.amount / t.installment), 0)
