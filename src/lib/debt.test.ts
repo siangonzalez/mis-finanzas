@@ -47,9 +47,14 @@ describe('cuotas', () => {
     expect(overdueInstallments(t, '2025-11-03').overdue).toEqual(['2025-10-25'])
   })
 
-  it('un pago doble cubre dos cuotas, y uno menor cuenta como una', () => {
-    const t = { ...base, payments: [...monthly([2, 3, 4, 5, 6, 7]), { date: '2025-08-25', amount: 40_000 }, { date: '2025-11-01', amount: 200_000 }] }
+  it('un pago doble cubre dos cuotas, y media cuota cuenta como una', () => {
+    const t = { ...base, payments: [...monthly([2, 3, 4, 5, 6, 7]), { date: '2025-08-25', amount: 50_000 }, { date: '2025-11-01', amount: 200_000 }] }
     expect(overdueInstallments(t, '2025-11-03').overdue).toEqual([])
+  })
+
+  it('un pago pequeño no cuenta como cuota', () => {
+    const t = { ...base, payments: [...monthly([2, 3, 4, 5, 6, 7, 8]), { date: '2025-08-08', amount: 2_752 }] }
+    expect(overdueInstallments(t, '2025-11-03').overdue).toEqual(['2025-09-25', '2025-10-25'])
   })
 
   it('sin cuota fija no hay atrasos', () => {

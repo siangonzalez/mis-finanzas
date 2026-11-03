@@ -32,7 +32,7 @@ function isTwin(a: InboxItem, b: InboxItem) {
 
 async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, receivedAt: number): Promise<InboxItem> {
   const rules = await db.rules.toArray()
-  const s = (await debtFor(p.merchant, p.kind)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
+  const s = (await debtFor(p.merchant, p.kind, p.amount)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
   return {
     id, source, bank: p.bank, role: p.role, kind: p.kind,
     date: p.date, time: p.time, amount: p.amount, merchant: p.merchant, account: p.account,
@@ -143,18 +143,20 @@ export async function accept(item: InboxItem, category = item.category, subcateg
 }
 
 // La deuda a la que corresponde un movimiento: una transferencia a Juan Camilo
-// es un pago de la deuda que tienes con él.
-async function debtFor(merchant: string, kind: InboxItem['kind']) {
+// es un pago de la deuda que tienes con él, pero solo si es de al menos media
+// cuota. Una transferencia pequeña a la misma persona es un gasto normal.
+async function debtFor(merchant: string, kind: InboxItem['kind'], amount: number) {
   const upper = merchant.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   return (await db.debts.toArray()).find(
     (d) =>
       ((d.direction === 'debo' && kind === 'gasto') || (d.direction === 'me-deben' && kind === 'ingreso')) &&
-      d.keywords.some((k) => k && upper.includes(k.toUpperCase())),
+      d.keywords.some((k) => k && upper.includes(k.toUpperCase())) &&
+      (d.installment <= 0 || amount >= d.installment / 2),
   )
 }
 
 async function linkToDebt(item: InboxItem) {
-  const debt = await debtFor(item.merchant, item.kind)
+  const debt = await debtFor(item.merchant, item.kind, item.amount)
   if (!debt) return
   const id = `alerta-${item.id}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-')
   await addDebtPayment(debt.id, { id, date: item.date, amount: item.amount, note: `Desde ${item.bank}`, source: 'alerta' })

@@ -96,8 +96,8 @@ export function simulateDebt(t: DebtTerms, until: string): DebtSimulation {
 
 // Cuotas atrasadas: las que han vencido desde el mes siguiente al primer
 // préstamo, menos las que se han pagado. Cada pago cuenta como las cuotas que
-// cubre (uno de 4M con cuota de 2M son dos), y como mínimo una, para que los
-// pagos de cuando la cuota era menor sigan contando.
+// cubre, redondeando: uno de 4M con cuota de 2M son dos, uno de 1M (cuando la
+// cuota era menor) cuenta como una, y uno de 27 mil no cuenta como cuota.
 export function overdueInstallments(t: DebtTerms, today: string) {
   const first = t.disbursements.map((d) => d.date).sort()[0]
   if (t.installment <= 0 || !first) return { overdue: [] as string[], next: '' }
@@ -114,7 +114,7 @@ export function overdueInstallments(t: DebtTerms, today: string) {
     if (d > today) next = d
     else due.push(d)
   }
-  const covered = t.payments.reduce((n, p) => n + Math.max(1, Math.round(p.amount / t.installment)), 0)
+  const covered = t.payments.reduce((n, p) => n + Math.round(p.amount / t.installment), 0)
   const owed = Math.max(0, due.length - covered)
   return { overdue: owed ? due.slice(-owed) : [], next }
 }
