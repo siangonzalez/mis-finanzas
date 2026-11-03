@@ -99,24 +99,55 @@ const bancolombia: Parser[] = [
   },
 ]
 
-const nequi: Parser = (t) => {
-  const m = t.match(/Hiciste un pago en (.+?) por \$\s?([\d.,]+).*?El (\d{1,2}) de (\w+) de (\d{4})(?:\s*Hora:\s*(\d{1,2}:\d{2})\s*([ap])\.?\s?m)?/i)
-  if (!m) return null
-  const month = MONTHS[m[4].toLowerCase()]
-  if (!month) return null
-  let time: string | undefined
-  if (m[6]) {
-    let [h, min] = m[6].split(':').map(Number)
-    if (m[7].toLowerCase() === 'p' && h < 12) h += 12
-    if (m[7].toLowerCase() === 'a' && h === 12) h = 0
-    time = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
-  }
-  return {
-    bank: 'Nequi', role: 'movimiento', kind: 'gasto', type: 'pago',
-    amount: parseAmount(m[2]), merchant: clean(m[1]),
-    date: `${m[5]}-${String(month).padStart(2, '0')}-${m[3].padStart(2, '0')}`, time,
-  }
+// "27 de septiembre de 2026" → 2026-09-27
+function spanishDate(day: string, monthName: string, year: string) {
+  const month = MONTHS[monthName.toLowerCase()]
+  return month ? `${year}-${String(month).padStart(2, '0')}-${day.padStart(2, '0')}` : null
 }
+
+// "1:02", "p" → 13:02
+function to24h(hm: string | undefined, ap: string | undefined) {
+  if (!hm) return undefined
+  let [h, min] = hm.split(':').map(Number)
+  if (ap?.toLowerCase() === 'p' && h < 12) h += 12
+  if (ap?.toLowerCase() === 'a' && h === 12) h = 0
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`
+}
+
+// Fecha y hora como las escribe Nequi: "el 9 de julio de 2026 a las 12:32 p.m"
+const NEQUI_WHEN = String.raw`el (\d{1,2}) de (\w+) de (\d{4})(?: a las? (\d{1,2}:\d{2})\s*([ap])\.?\s?m)?`
+
+const nequi: Parser[] = [
+  (t) => {
+    const m = t.match(/Hiciste un pago en (.+?) por \$\s?([\d.,]+).*?El (\d{1,2}) de (\w+) de (\d{4})(?:\s*Hora:\s*(\d{1,2}:\d{2})\s*([ap])\.?\s?m)?/i)
+    const date = m && spanishDate(m[3], m[4], m[5])
+    if (!m || !date) return null
+    return {
+      bank: 'Nequi', role: 'movimiento', kind: 'gasto', type: 'pago',
+      amount: parseAmount(m[2]), merchant: clean(m[1]), date, time: to24h(m[6], m[7]),
+    }
+  },
+  (t) => {
+    // Bre-B enviado: "Enviaste de manera exitosa 22.000 a la llave 0092121073 de THOMAS DUFRAINE el 27 de …"
+    const m = t.match(new RegExp(`Enviaste (?:de manera exitosa )?\\$?\\s?([\\d.,]+) a (?:la llave \\S+ de )?(.+?) ${NEQUI_WHEN}`, 'i'))
+    const date = m && spanishDate(m[3], m[4], m[5])
+    if (!m || !date) return null
+    return {
+      bank: 'Nequi', role: 'movimiento', kind: 'gasto', type: 'transferencia-enviada',
+      amount: parseAmount(m[1]), merchant: `Transferencia a ${clean(m[2])}`, date, time: to24h(m[6], m[7]),
+    }
+  },
+  (t) => {
+    // Bre-B recibido: "Recibiste 60.000 de NATALY … el 9 de julio de 2026 a las 12:32 p.m, desde el banco Davivienda."
+    const m = t.match(new RegExp(`Recibiste \\$?\\s?([\\d.,]+) de (.+?) ${NEQUI_WHEN}`, 'i'))
+    const date = m && spanishDate(m[3], m[4], m[5])
+    if (!m || !date) return null
+    return {
+      bank: 'Nequi', role: 'movimiento', kind: 'ingreso', type: 'transferencia-recibida',
+      amount: parseAmount(m[1]), merchant: clean(m[2]), date, time: to24h(m[6], m[7]),
+    }
+  },
+]
 
 const pse: Parser = (t) => {
   if (!/Protegido ACH|PSE - Transacci[oó]n Aprobada|serviciopse/i.test(t)) return null
@@ -144,7 +175,7 @@ const davivienda: Parser = (t) => {
   }
 }
 
-const PARSERS: Parser[] = [...bancolombia, nequi, pse, davivienda]
+const PARSERS: Parser[] = [...bancolombia, ...nequi, pse, davivienda]
 
 export function parseAlert(text: string): ParsedAlert | null {
   const t = clean(text)

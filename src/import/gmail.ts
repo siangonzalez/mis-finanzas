@@ -11,8 +11,13 @@ interface GmailResponse {
 
 export const isGmailConfigured = isScriptConfigured
 
+// Súbelo cuando los lectores aprendan formatos nuevos: la siguiente revisión
+// vuelve a leer 60 días (lo ya revisado no se repite).
+const PARSER_VERSION = 2
+
 export async function syncGmail(days?: number) {
-  const last = Number(await getSetting('gmail.lastSync')) || 0
+  const outdated = Number(await getSetting('gmail.parserVersion')) < PARSER_VERSION
+  const last = outdated ? 0 : Number(await getSetting('gmail.lastSync')) || 0
   // La primera vez trae 60 días; después, desde la última sincronización (con un día de margen).
   const since = days ? Date.now() - days * 86_400_000 : last ? last - 86_400_000 : Date.now() - 60 * 86_400_000
 
@@ -22,5 +27,6 @@ export async function syncGmail(days?: number) {
     messages.map((m) => ({ id: `gmail:${m.id}`, source: 'gmail' as const, text: `${m.subject} ${m.text}`, receivedAt: Date.parse(m.date) })),
   )
   await setSetting('gmail.lastSync', String(Date.now()))
+  await setSetting('gmail.parserVersion', String(PARSER_VERSION))
   return { read: messages.length, added }
 }

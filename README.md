@@ -29,7 +29,7 @@ Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos
 ## Fase 2 (lista): movimientos automáticos
 
 - **Revisar:** bandeja con los movimientos detectados. Cada uno trae una categoría sugerida que puedes aceptar, cambiar o ignorar, y hay un botón de "Aceptar todos".
-- **Lectores de alertas** (`src/import/parsers.ts`) para Bancolombia (compras con débito y crédito, retiros, pagos, transferencias), Nequi, PSE y los recibos de Davivienda. Las pruebas están en `parsers.test.ts` (`npm test`).
+- **Lectores de alertas** (`src/import/parsers.ts`) para Bancolombia (compras con débito y crédito, retiros, pagos, transferencias), Nequi (pagos y envíos y recibos por Bre-B), PSE y los recibos de Davivienda. Las pruebas están en `parsers.test.ts` (`npm test`).
 - **Repetidos:** si el mismo pago llega por el banco, por PSE y por el comercio, se cuenta una sola vez. Lo repetido queda a la vista por si hay que recuperarlo.
 - **Reglas que aprenden:** cuando aceptas un comercio con una categoría, los siguientes del mismo comercio llegan con esa categoría.
 - **Gmail** con un Apps Script en tu propia cuenta, **Apple Pay** con el Atajo "Transacción" y **SMS** con el Atajo "Mensaje", o pegando la alerta. Los pasos están en [integraciones/README.md](integraciones/README.md).

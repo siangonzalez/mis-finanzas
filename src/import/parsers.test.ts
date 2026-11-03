@@ -56,6 +56,21 @@ describe('otros bancos', () => {
     })
   })
 
+  it('Nequi: envío por Bre-B', () => {
+    expect(parseAlert('¡Realizaste un envío por Bre-B y todo salió bien! ¡Hola, ANA! Enviaste de manera exitosa 22.000 a la llave 0090000000 de PEDRO RUIZ el 27 de septiembre de 2026 a la 1:02 p.m. Revisa el detalle')).toMatchObject({
+      bank: 'Nequi', kind: 'gasto', type: 'transferencia-enviada', amount: 22000, merchant: 'Transferencia a PEDRO RUIZ', date: '2026-09-27', time: '13:02',
+    })
+    expect(parseAlert('Enviaste de manera exitosa 16.000 a la llave 0090000001 de LUIS PEREZ el 9 de septiembre de 2026 a las 12:36 pm Revisa')).toMatchObject({
+      amount: 16000, merchant: 'Transferencia a LUIS PEREZ', time: '12:36',
+    })
+  })
+
+  it('Nequi: plata recibida por Bre-B', () => {
+    expect(parseAlert('¡Recibiste plata por Bre-B! ¡Hola, ANA ! Recibiste 60.000 de MARIA LOPEZ el 9 de julio de 2026 a las 12:32 p.m, desde el banco Davivienda.')).toMatchObject({
+      bank: 'Nequi', kind: 'ingreso', type: 'transferencia-recibida', amount: 60000, merchant: 'MARIA LOPEZ', date: '2026-07-09', time: '12:32',
+    })
+  })
+
   it('PSE es un comprobante', () => {
     expect(parseAlert('Bienvenido al sistema Protegido ACH. | Valor: $ 527.000,00 | | Empresa: Banco Davivienda S.A. (Zona Pagos) | | Descripción: Pagos | | Fecha de la transacción: 29/10/2026 | | CUS: 123456789')).toMatchObject({
       bank: 'PSE', role: 'comprobante', amount: 527000, merchant: 'Banco Davivienda S.A. (Zona Pagos)', date: '2026-10-29',
