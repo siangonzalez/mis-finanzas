@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { activeCards, db } from '../data/db'
+import { cardPaid } from '../lib/cards'
 import { overdueInstallments, simulateDebt } from '../lib/debt'
 import { money, todayISO } from '../lib/format'
 
@@ -8,9 +9,10 @@ import { money, todayISO } from '../lib/format'
 export function DebtReminder({ onOpen }: { onOpen: () => void }) {
   const debts = useLiveQuery(() => db.debts.toArray(), []) ?? []
   const cards = useLiveQuery(activeCards, []) ?? []
+  const inbox = useLiveQuery(() => db.inbox.toArray(), []) ?? []
   const today = todayISO()
   const days = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000)
-  const dueCards = cards.filter((c) => c.totalDebt >= 1_000 && c.dueDate && days(c.dueDate) <= 7)
+  const dueCards = cards.filter((c) => c.totalDebt >= 1_000 && c.dueDate && days(c.dueDate) <= 7 && !cardPaid(c, inbox).covered)
   if (!debts.length && !dueCards.length) return null
 
   return (

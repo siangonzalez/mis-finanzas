@@ -70,7 +70,8 @@ export interface Rule extends Synced {
   subcategory: string
 }
 
-export type CardRecord = CardSummary & Synced
+// manualPayment: el "Ya pagué" que marcas tú cuando el pago no llega por correo.
+export type CardRecord = CardSummary & Synced & { manualPayment?: { date: string; amount: number } }
 
 export interface Setting {
   key: string
@@ -203,6 +204,10 @@ export async function saveCardSummary(c: CardSummary) {
   if (prev && !prev.deleted && prev.cutDate > c.cutDate) return false
   await db.cards.put({ ...c, deleted: false })
   return true
+}
+
+export function markCardPaid(id: string, payment: { date: string; amount: number } | undefined) {
+  return db.cards.update(id, { manualPayment: payment })
 }
 
 export async function activeCards() {

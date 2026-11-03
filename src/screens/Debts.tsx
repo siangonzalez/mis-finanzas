@@ -1,10 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import {
-  activeCards, addDebtDisbursement, addDebtPayment, createDebt, db, getSetting, importDebtFile, saveMovement, type Debt,
+  activeCards, addDebtDisbursement, addDebtPayment, createDebt, db, markCardPaid, type CardRecord, getSetting, importDebtFile, saveMovement, type Debt,
 } from '../data/db'
 import { syncDebts, type SyncResult } from '../data/debtSync'
-import type { CardSummary } from '../import/statements'
+import { cardPaid } from '../lib/cards'
 import { overdueInstallments, payoffProjection, simulateDebt } from '../lib/debt'
 import { money, moneyInput, monthLabel, parseMoney, todayISO } from '../lib/format'
 
@@ -488,8 +488,9 @@ function endMonth(due: string, left: number) {
 }
 
 // Tarjetas y créditos de bancos: lo que dice el último extracto cargado de cada uno.
-function CardList({ cards }: { cards: CardSummary[] }) {
+function CardList({ cards }: { cards: CardRecord[] }) {
   const today = todayISO()
+  const inbox = useLiveQuery(() => db.inbox.toArray(), []) ?? []
   const soon = (d: string) => (Date.parse(d) - Date.parse(today)) / 86_400_000
   const sorted = [...cards].sort((a, b) => b.totalDebt - a.totalDebt)
   return (
@@ -508,32 +509,46 @@ function CardList({ cards }: { cards: CardSummary[] }) {
               </li>
             )
           }
+          const p = cardPaid(c, inbox)
           const days = c.dueDate ? soon(c.dueDate) : Infinity
-          const tone = days < 0 ? 'bad' : days <= 5 ? 'warn' : ''
+          const tone = p.covered ? 'ok' : days < 0 ? 'bad' : days <= 5 ? 'warn' : ''
           return (
             <li key={c.id} className={`card card-debt ${tone === 'bad' ? 'alert' : ''}`}>
               <div className="debt-item-row">
                 <span className="mv-text">
                   <b>{name}</b>
-                  <span className={`small ${tone === 'warn' ? 'warn-text' : 'muted'}`}>
-                    {days < 0 ? `⚠️ La fecha límite fue el ${shortDate(c.dueDate)}. ¿Ya pagaste?`
+                  <span className={`small ${tone === 'warn' ? 'warn-text' : tone === 'ok' ? 'pos' : 'muted'}`}>
+                    {p.covered ? `✅ Pagaste ${money(p.paid)} el ${shortDate(p.lastDate)}${p.manual ? ' (marcado por ti)' : ''}`
+                      : days < 0 ? `⚠️ La fecha límite fue el ${shortDate(c.dueDate)}. ¿Ya pagaste?`
                       : days === 0 ? `⏰ Hoy vence: ${pay.toLowerCase()} de ${money(c.minPayment)}`
                       : `${days <= 5 ? '⏰ ' : ''}${pay} ${money(c.minPayment)} antes del ${shortDate(c.dueDate)}`}
                   </span>
                 </span>
-                <b className="debt-balance">{money(c.totalDebt)}</b>
+                <b className="debt-balance">{money(Math.max(0, c.totalDebt - p.paid))}</b>
               </div>
+              {p.paid > 0 && !p.covered && (
+                <p className="small warn-text">Pagaste {money(p.paid)}; para el {pay.toLowerCase()} faltan {money(c.minPayment - p.paid)}.</p>
+              )}
               <p className="muted small">
                 {loan ? 'Saldo' : 'Extracto con corte'} al {c.cutDate ? shortDate(c.cutDate) : '—'}
                 {loan && c.installmentsLeft ? ` · quedan ${c.installmentsLeft} cuotas, terminas en ${endMonth(c.dueDate, c.installmentsLeft)}` : ''}
                 {c.limit > 0 && ` · usas ${Math.round(((c.limit - c.available) / c.limit) * 100)} % del cupo de ${money(c.limit)}`}
                 {c.ea > 0 && ` · ${(c.ea * 100).toFixed(1).replace('.', ',')} % EA`}
+                {p.paid > 0 && ` · el extracto decía ${money(c.totalDebt)}`}
               </p>
+              {!p.covered && c.minPayment > 0 && (
+                <button className="link card-paid" onClick={() => markCardPaid(c.id, { date: today, amount: c.minPayment })}>
+                  Ya pagué el {pay.toLowerCase()}
+                </button>
+              )}
+              {p.manual && (
+                <button className="link card-paid" onClick={() => markCardPaid(c.id, undefined)}>Deshacer "ya pagué"</button>
+              )}
             </li>
           )
         })}
       </ul>
-      <p className="muted small group-note">Se actualiza cada vez que cargas el extracto del mes en Revisar. Los pagos que hagas después del corte se verán en el siguiente.</p>
+      <p className="muted small group-note">Se actualiza cada vez que cargas el extracto del mes en Revisar. Los pagos que hagas después del corte se descuentan cuando llegan en tus alertas; si no llegan (Bancolombia no avisa los pagos a sus propias tarjetas), márcalos con "Ya pagué".</p>
     </section>
   )
 }
