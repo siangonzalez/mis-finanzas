@@ -205,7 +205,7 @@ function SyncSettings() {
     <section className="card">
       <h3>Tus dispositivos</h3>
       <p className="muted small">
-        Movimientos, Revisar, presupuesto, reglas y tarjetas se sincronizan solos entre tu PC y tu iPhone a través de tu
+        Movimientos, Revisar, presupuesto, reglas, tarjetas y cuentas de cobro se sincronizan solos entre tu PC y tu iPhone a través de tu
         cuenta de Google (pestaña "datos" de tu hoja). Las deudas también, por su lado.
       </p>
       <p className="muted small" style={{ marginTop: 6 }}>

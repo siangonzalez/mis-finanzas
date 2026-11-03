@@ -47,7 +47,7 @@ Para ver la lista sin mandar correos, ejecuta `verRecordatorios` y mira el regis
 
 ### Sincronización entre tus dispositivos
 
-Con el script conectado, la app sincroniza sola los movimientos, Revisar, el presupuesto, las reglas de categorías y las tarjetas entre tu PC y tu iPhone. Lo hace al abrir la app, al volver a ella y unos segundos después de cada cambio. Todo queda en la pestaña **datos** de tu hoja, una fila por registro. Si cambias lo mismo en dos dispositivos, gana el cambio más reciente. Para un dispositivo nuevo, basta con pegar la URL y la clave en **⚙ → Cuenta de Google**: baja todo lo que ya tienes.
+Con el script conectado, la app sincroniza sola los movimientos, Revisar, el presupuesto, las reglas de categorías, las tarjetas y las cuentas de cobro entre tu PC y tu iPhone. Lo hace al abrir la app, al volver a ella y unos segundos después de cada cambio. Todo queda en la pestaña **datos** de tu hoja, una fila por registro. Si cambias lo mismo en dos dispositivos, gana el cambio más reciente. Para un dispositivo nuevo, basta con pegar la URL y la clave en **⚙ → Cuenta de Google**: baja todo lo que ya tienes.
 
 ### Tablero compartido de Claude
 

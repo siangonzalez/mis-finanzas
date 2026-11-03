@@ -276,3 +276,12 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
 .debt-item-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .group-note { margin: 8px 4px 0; }
 .card-paid { align-self: flex-start; font-size: 13px; }
+.group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.group-head .group-title { margin-right: 0; }
+.debt-item-row.plain { width: 100%; text-align: left; padding: 0; }
+.debt-item-row.plain .mv-text { gap: 2px; }
+.proposal { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--card-2); border: 1px solid var(--accent); }
+.proposal p { margin: 0; }
+.receivable-actions { padding-top: 4px; }
+.link.pos { color: var(--pos); }
+.link.neg { color: var(--neg); }

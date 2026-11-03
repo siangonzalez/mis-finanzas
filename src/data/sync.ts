@@ -1,7 +1,7 @@
 import { asRemote, db, getSetting, onLocalChange, setSetting, SYNCED_TABLES, type Synced, type SyncedTable } from './db'
 import { callScript, isScriptConfigured } from './remote'
 
-// Sincroniza movimientos, bandeja, presupuesto, reglas y tarjetas entre tus
+// Sincroniza movimientos, bandeja, presupuesto, reglas, tarjetas y cobros entre tus
 // dispositivos, a través de la pestaña "datos" de tu hoja de Google.
 //  1. Manda lo que cambió aquí desde la última vez.
 //  2. Recibe lo que cambió en tus otros dispositivos y lo aplica.

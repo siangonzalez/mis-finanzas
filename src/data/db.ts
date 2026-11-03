@@ -5,7 +5,7 @@ import type { CardSummary } from '../import/statements'
 
 // Todo vive en IndexedDB del dispositivo. Las funciones de este archivo son la
 // única puerta a los datos. Los movimientos, la bandeja, el presupuesto, las
-// reglas y las tarjetas se sincronizan entre tus dispositivos (ver sync.ts);
+// reglas, las tarjetas y los cobros se sincronizan entre tus dispositivos (ver sync.ts);
 // las deudas van por su lado (debtSync.ts).
 
 export type Recurrence = 'fijo' | 'ocasional'
@@ -78,6 +78,22 @@ export interface Setting {
   value: string
 }
 
+// Cuenta de cobro: trabajo ya hecho que todavía no te pagan (no es un préstamo).
+// paid: cuándo y cuánto te pagaron (puede ser menos por la retención en la fuente).
+// rejected: pagos que la app te propuso y dijiste que no eran de este cobro.
+export interface Receivable extends Synced {
+  id: string
+  client: string
+  concept: string
+  amount: number
+  sentDate: string // cuándo enviaste la cuenta de cobro
+  dueDate?: string // cuándo quedaron de pagarte
+  keywords: string[] // cómo aparece el cliente en las alertas del banco
+  paid?: { date: string; amount: number; inboxId?: string }
+  rejected?: string[]
+  createdAt: number
+}
+
 export interface Debt extends DebtTerms {
   id: string
   name: string // con quién es la deuda
@@ -94,6 +110,7 @@ const db = new Dexie('finanzas') as Dexie & {
   settings: EntityTable<Setting, 'key'>
   debts: EntityTable<Debt, 'id'>
   cards: EntityTable<CardRecord, 'id'>
+  cobros: EntityTable<Receivable, 'id'>
 }
 
 db.version(1).stores({
@@ -157,9 +174,15 @@ db.version(5)
 
 db.version(6).stores({ movements: null })
 
+// Cuentas de cobro. Se vuelve a pedir todo a la hoja una vez, por si ya
+// llegaron cobros desde otro dispositivo antes de que este los conociera.
+db.version(7)
+  .stores({ cobros: 'id, updatedAt' })
+  .upgrade((tx) => tx.table('settings').put({ key: 'sync.since', value: '0' }))
+
 // Toda escritura marca la fecha del cambio, salvo cuando se está aplicando
 // lo que llega del otro dispositivo (que ya trae su propia fecha).
-export const SYNCED_TABLES = ['movs', 'budgets', 'inbox', 'rules', 'cards'] as const
+export const SYNCED_TABLES = ['movs', 'budgets', 'inbox', 'rules', 'cards', 'cobros'] as const
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
 let applyingRemote = false
 const changeListeners = new Set<() => void>()
@@ -212,6 +235,27 @@ export function markCardPaid(id: string, payment: { date: string; amount: number
 
 export async function activeCards() {
   return (await db.cards.toArray()).filter(alive)
+}
+
+export async function activeReceivables() {
+  return (await db.cobros.toArray()).filter(alive)
+}
+
+export function saveReceivable(r: Omit<Receivable, 'id' | 'createdAt'> & { id?: string; createdAt?: number }) {
+  return db.cobros.put({ ...r, id: r.id ?? newId(), createdAt: r.createdAt ?? Date.now(), deleted: false })
+}
+
+export function markReceivablePaid(id: string, paid: Receivable['paid']) {
+  return db.cobros.update(id, { paid })
+}
+
+export async function rejectReceivablePayment(id: string, inboxId: string) {
+  const r = await db.cobros.get(id)
+  if (r) await db.cobros.update(id, { rejected: [...(r.rejected ?? []), inboxId] })
+}
+
+export function deleteReceivable(id: string) {
+  return db.cobros.update(id, { deleted: true })
 }
 
 export async function getSetting(key: string) {
@@ -273,6 +317,7 @@ export interface Backup {
   rules?: Rule[]
   debts?: Debt[]
   cards?: CardSummary[]
+  cobros?: Receivable[]
 }
 
 export async function exportBackup(): Promise<Backup> {
@@ -286,10 +331,11 @@ export async function exportBackup(): Promise<Backup> {
     rules: await db.rules.toArray(),
     debts: await db.debts.toArray(),
     cards: await activeCards(),
+    cobros: await activeReceivables(),
   }
 }
 
-const ALL = () => [db.movs, db.budgets, db.inbox, db.rules, db.debts, db.cards]
+const ALL = () => [db.movs, db.budgets, db.inbox, db.rules, db.debts, db.cards, db.cobros]
 
 // Marca todo como borrado (lápidas), para que en tus otros dispositivos también se borre.
 async function tombstoneAll() {
@@ -298,6 +344,7 @@ async function tombstoneAll() {
   await db.inbox.toCollection().modify({ deleted: true, status: 'ignorado' })
   await db.rules.toCollection().modify({ deleted: true })
   await db.cards.toCollection().modify({ deleted: true })
+  await db.cobros.toCollection().modify({ deleted: true })
 }
 
 export async function importBackup(data: Backup) {
@@ -327,6 +374,7 @@ export async function importBackup(data: Backup) {
     await db.rules.bulkPut((data.rules ?? []).map(fresh))
     await db.debts.bulkPut(data.debts ?? [])
     await db.cards.bulkPut((data.cards ?? []).map(fresh))
+    await db.cobros.bulkPut((data.cobros ?? []).map(fresh))
   })
 }
 

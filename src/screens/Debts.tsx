@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import {
-  activeCards, addDebtDisbursement, addDebtPayment, createDebt, db, markCardPaid, type CardRecord, getSetting, importDebtFile, saveMovement, type Debt,
+  activeCards, activeReceivables, addDebtDisbursement, addDebtPayment, createDebt, db, markCardPaid, type CardRecord, getSetting, importDebtFile, saveMovement, type Debt,
 } from '../data/db'
 import { syncDebts, type SyncResult } from '../data/debtSync'
 import { cardPaid } from '../lib/cards'
+import { ReceivableList } from './Receivables'
 import { overdueInstallments, payoffProjection, simulateDebt } from '../lib/debt'
 import { money, moneyInput, monthLabel, parseMoney, todayISO } from '../lib/format'
 
@@ -42,6 +43,7 @@ function status(d: Debt, today: string) {
 export function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray(), [])
   const cards = useLiveQuery(activeCards, []) ?? []
+  const toCollect = (useLiveQuery(activeReceivables, []) ?? []).filter((r) => !r.paid).reduce((s, r) => s + r.amount, 0)
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [sync, setSync] = useState<SyncResult | null>(null)
@@ -95,14 +97,14 @@ export function Debts() {
   }
 
   const rows = debts.map((d) => ({ d, ...status(d, today) }))
-  const owed = rows.filter((r) => r.d.direction === 'me-deben').reduce((s, r) => s + Math.max(0, r.balance), 0)
+  const owed = rows.filter((r) => r.d.direction === 'me-deben').reduce((s, r) => s + Math.max(0, r.balance), 0) + toCollect
   const owing =
     rows.filter((r) => r.d.direction === 'debo').reduce((s, r) => s + Math.max(0, r.balance), 0) +
     cards.reduce((s, c) => s + c.totalDebt, 0)
 
   return (
     <>
-      {debts.length > 0 || cards.length > 0 ? (
+      {debts.length > 0 || cards.length > 0 || toCollect > 0 ? (
         <section className="grid2">
           <div className="card stat">
             <span className="muted small">Te deben</span>
@@ -123,12 +125,14 @@ export function Debts() {
 
       {syncLine}
 
+      <ReceivableList />
+
       {(['me-deben', 'debo'] as const).map((dir) => {
         const list = rows.filter((r) => r.d.direction === dir)
         if (!list.length) return null
         return (
           <section key={dir}>
-            <h4 className="group-title">{dir === 'me-deben' ? 'Me deben' : 'Yo debo'}</h4>
+            <h4 className="group-title">{dir === 'me-deben' ? 'Me deben (préstamos)' : 'Yo debo'}</h4>
             <ul className="debt-list">
               {list.map(({ d, balance, label, tone }) => (
                 <li key={d.id}>
