@@ -99,7 +99,7 @@ describe('extracto de Nequi en PDF', () => {
   })
 
   it('avisa si el PDF no es de Nequi', () => {
-    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/leo extractos de Nequi y Tuya/)
+    expect(() => rowsFromStatementLines(['Banco Ejemplo', '01/01/2026 Algo $1.00 $2.00'])).toThrow(/leo extractos de Nequi, Tuya y las tarjetas Bancolombia/)
   })
 })
 
@@ -143,5 +143,46 @@ describe('extracto de Tuya (tarjeta de crédito)', () => {
   it('una compra a cuotas tiene el mismo id en el extracto siguiente', () => {
     const next = statementFromPdfLines([...lines.slice(0, 2), '2026/09/06 +COMPRA INTERNACIONA | CapCut 59.900,00 56.000,00 2.236,11 2,15% 29,20% 2/36', ...lines.slice(-2)])
     expect(next.items[0].id).toBe(by('CapCut')!.id)
+  })
+})
+
+describe('extracto de tarjeta Bancolombia', () => {
+  // Líneas inventadas con el formato real del PDF (texto repetido incluido).
+  const lines = [
+    'Tarjeta: ************1234 Tarjeta: ************1234 Tarjeta: ************1234',
+    'NIT: 890.903.938-8 ESTADO DE CUENTA EN: DOLARES',
+    'Nuevos movimientos entre 15 sep hasta 15 oct. 2026',
+    '000000 20/09/2026 AMAZON PRIME $ 14.990,00 $ 14.990,00 $ 0,00',
+    'NIT: 890.903.938-8 ESTADO DE CUENTA EN: PESOS',
+    'Nuevos movimientos entre 15 sep hasta 15 oct. 2026 Nuevos movimientos entre 15 sep hasta 15 oct. 2026',
+    '15/10/2026 INTERESES CORRIENTES $ 123.067,71 $ 123.067,71 $ 0,00',
+    '000000 15/10/2026 CUOTA DE MANEJO $ 36.990,00 $ 36.990,00 $ 0,00',
+    '000000 14/10/2026 COMISION AVANCE SUCURSA $ 6.840,00 $ 6.840,00 $ 0,00',
+    'C00001 14/10/2026 AVANCE SUCURSAL VIRTUAL $ 2.000.000,00 1/24 $ 83.333,33 2,1155 % 28,5582 % $ 1.916.666,67',
+    'R00002 05/10/2026 TIENDA DE BICICLETAS $ 178.500,00 1/3 $ 59.500,00 2,1155 % 28,5582 % $ 119.000,00',
+    'C00003 01/10/2026 ABONO SUCURSAL VIRTUAL $ -436.595,00 $ -436.595,00 $ 0,00',
+    'Movimientos antes de 15 sep Movimientos antes de 15 sep',
+    'C00004 22/08/2026 AVANCE SUCURSAL VIRTUAL $ 5.000.000,00 2/24 $ 208.333,33 2,1155 % 28,5582 % $ 4.583.333,34',
+  ]
+  const { bank, items } = statementFromPdfLines(lines)
+  const by = (m: string) => items.find((i) => i.parsed.merchant === m)
+
+  it('lee solo los movimientos nuevos en pesos', () => {
+    expect(bank).toBe('Bancolombia')
+    expect(items).toHaveLength(6)
+    expect(by('AMAZON PRIME')).toBeUndefined()
+    expect(items.some((i) => i.parsed.amount === 5_000_000)).toBe(false)
+  })
+
+  it('compras y costos de la tarjeta son gastos', () => {
+    expect(by('TIENDA DE BICICLETAS')?.parsed).toMatchObject({ kind: 'gasto', amount: 178500, date: '2026-10-05', account: 'T. Crédito *1234' })
+    expect(by('Intereses tarjeta Bancolombia')?.parsed.amount).toBe(123068)
+    expect(by('Cuota de manejo Bancolombia')?.parsed.amount).toBe(36990)
+    expect(by('Comisión tarjeta Bancolombia')?.parsed.amount).toBe(6840)
+  })
+
+  it('abonos y avances son entre tus cuentas', () => {
+    expect(by('Pago a la tarjeta Bancolombia')).toMatchObject({ own: true, parsed: { kind: 'ingreso', amount: 436595 } })
+    expect(by('Avance de la tarjeta Bancolombia')).toMatchObject({ own: true, parsed: { kind: 'gasto', amount: 2000000 } })
   })
 })

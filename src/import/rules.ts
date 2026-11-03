@@ -50,7 +50,7 @@ const DEFAULTS: [RegExp, Kind, Suggestion][] = [
   [/CONJ|CONJUNTO|ADMINISTRACION|PROPIEDAD HORIZONTAL/, 'gasto', { category: 'Hogar', subcategory: 'Administración' }],
   [/DAVIVIENDA|CARTERA|TARJETA|BANCO|TUYA|NU COLOMBIA|CREDITO/, 'gasto', { category: 'Deudas', subcategory: 'Tarjeta de crédito' }],
   [/ADOBE|CAPCUT|GOOGLE ?\*|NETLIFY|HIGGSFIELD|CANVA|OPENAI|CHATGPT|ANTHROPIC|CLAUDE|EPIDEMIC|FIGMA|NOTION|DROPBOX|ICLOUD/, 'gasto', { category: 'Suscripciones', subcategory: 'Otras' }],
-  [/CUOTA DE MANEJO|SEGURO DEUDORES|SEG DEUD|INTERESES TARJETA/, 'gasto', { category: 'Deudas', subcategory: 'Tarjeta de crédito' }],
+  [/CUOTA DE MANEJO|SEGURO DEUDORES|SEG DEUD|INTERESES TARJETA|COMISI[OÓ]N TARJETA/, 'gasto', { category: 'Deudas', subcategory: 'Tarjeta de crédito' }],
   [/PAPELERIA|LIBRERIA|PANAMERICANA/, 'gasto', { category: 'Educación', subcategory: 'Materiales' }],
   [/FERRETERIA|HOMECENTER|CONSTRUCTOR/, 'gasto', { category: 'Hogar', subcategory: 'Otros' }],
   [/4X1000|GRAVAMEN/, 'gasto', { category: 'Otros', subcategory: 'Otros' }],

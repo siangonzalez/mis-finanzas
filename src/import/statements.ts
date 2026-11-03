@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi y Tuya. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya y las tarjetas Bancolombia. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -189,10 +189,69 @@ export function tuyaItems(lines: string[]): StatementItem[] {
   return items
 }
 
+// ── Tarjetas de crédito Bancolombia (MasterCard, AMEX, Visa) ─────────────
+// "C03247 14/10/2026 AVANCE SUCURSAL VIRTUAL $ 2.000.000,00 1/24 $ 83.333,33 2,1155 % 28,5582 % $ 1.916.666,67"
+// "000000 15/10/2026 CUOTA DE MANEJO $ 36.990,00 $ 36.990,00 $ 0,00"
+// Columnas: autorización (opcional), fecha, descripción, valor, cuotas (opcional),
+// cuota o abono, tasas (opcional), saldo pendiente.
+const BANCOLOMBIA_ROW = /^(?:\S{6}\s+)?(\d{2})\/(\d{2})\/(\d{4})\s+(.+?)\s+\$\s?(-?[\d.]+,\d{2})(?:\s+\d+\/\d+)?\s+\$\s?-?[\d.]+,\d{2}(?:\s+[\d,]+\s?%\s+[\d,]+\s?%)?\s+\$\s?-?[\d.]+,\d{2}$/
+
+export function bancolombiaCardItems(lines: string[]): StatementItem[] {
+  const card = lines.join(' ').match(/Tarjeta:\s*\*+(\d{4})/)?.[1] ?? ''
+  const account = card ? `T. Crédito *${card}` : 'T. Crédito'
+  const items: StatementItem[] = []
+  const seen = new Map<string, number>()
+  let pesos = false // las páginas en dólares van aparte
+  let fresh = false // solo "Nuevos movimientos"; los anteriores ya salieron en su extracto
+  for (const line of lines) {
+    const currency = line.match(/ESTADO DE CUENTA EN:\s*(PESOS|DOLARES)/i)
+    if (currency) {
+      pesos = /PESOS/i.test(currency[1])
+      fresh = false
+    }
+    if (/Nuevos movimientos entre/i.test(line)) fresh = true
+    if (/Movimientos antes de/i.test(line)) fresh = false
+    const m = pesos && fresh ? line.match(BANCOLOMBIA_ROW) : null
+    if (!m) continue
+
+    const date = `${m[3]}-${m[2]}-${m[1]}`
+    const desc = m[4].trim()
+    const value = signed(m[5])
+    const amount = Math.abs(value)
+    const key = `${date}-${Math.round(amount)}-${desc.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
+    const n = (seen.get(key) ?? 0) + 1
+    seen.set(key, n)
+    // "Bancolombia TC" para no confundir la tarjeta con tu cuenta Bancolombia al
+    // emparejar el pago de la tarjeta con la plata que sale de la cuenta.
+    const base = { bank: 'Bancolombia TC', role: 'movimiento' as const, amount, date, account }
+
+    let parsed: ParsedAlert
+    let own = false
+    if (value < 0 || /^(ABONO|PAGO)/i.test(desc)) {
+      own = true
+      parsed = { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Pago a la tarjeta Bancolombia' }
+    } else if (/^AVANCE/i.test(desc)) {
+      // Un avance pasa plata de la tarjeta a tu cuenta: es deuda, no gasto.
+      own = true
+      parsed = { ...base, kind: 'gasto', type: 'transferencia-enviada', merchant: 'Avance de la tarjeta Bancolombia' }
+    } else {
+      const label = /^INTERESES/i.test(desc) ? 'Intereses tarjeta Bancolombia'
+        : /^CUOTA DE MANEJO/i.test(desc) ? 'Cuota de manejo Bancolombia'
+        : /^COMISION/i.test(desc) ? 'Comisión tarjeta Bancolombia'
+        : desc
+      parsed = { ...base, kind: 'gasto', type: 'compra', merchant: label }
+    }
+    items.push({ id: `extracto-bancolombia-${card}-${key}-${n}`, parsed, own })
+  }
+  return items
+}
+
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
 export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[] } {
   const text = lines.join(' ')
   if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines) }
   if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
-  throw new Error('Por ahora leo extractos de Nequi y Tuya. Mándame un ejemplo de este banco y lo agrego.')
+  // Nequi va antes: sus extractos pueden mencionar a Bancolombia.
+  if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines) }
+  throw new Error('Por ahora leo extractos de Nequi, Tuya y las tarjetas Bancolombia. Mándame un ejemplo de este banco y lo agrego.')
 }
