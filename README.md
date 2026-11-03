@@ -2,6 +2,9 @@
 
 App web instalable (PWA) para llevar ingresos, gastos y presupuesto, basada en la plantilla de Excel del e-book de Brayan Mantilla.
 
+**App publicada:** <https://siangonzalez.github.io/mis-finanzas/>. Se vuelve a publicar sola con cada cambio en `main`.
+En el iPhone, ábrela en Safari, toca Compartir y luego "Agregar a pantalla de inicio".
+
 ## Fase 1 (lista)
 
 - **Resumen:** "¿Cuánto te queda?", cuánto puedes gastar al día, ingresos vs. gastos, fijos vs. ocasionales, gastos hormiga (≤ $20.000) con proyección anual, gasto por categoría y origen de los ingresos.
@@ -19,10 +22,9 @@ npm install
 npm run dev
 ```
 
-## Probar en el iPhone (misma red Wi-Fi)
+## Probar cambios en el iPhone antes de publicarlos (misma red Wi-Fi)
 
-Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173` y usa Compartir → "Agregar a pantalla de inicio".
-Para usarla en serio (con funcionamiento sin conexión y datos que no se pierdan), hay que publicarla con HTTPS, por ejemplo en Vercel, Netlify o Cloudflare Pages.
+Con `npm run dev` corriendo, abre en Safari `http://<IP-del-PC>:5173`. Los datos de esa dirección son distintos a los de la app publicada.
 
 ## Fase 2 (lista): movimientos automáticos
 

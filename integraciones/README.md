@@ -31,7 +31,7 @@ Cada vez que pagas con Apple Pay, el iPhone le pasa la compra a la app.
 3. Acción: **Abrir URLs** con esta dirección (cambia el dominio por el de tu app):
 
    ```
-   https://TU-APP/#/applepay?monto=[Cantidad]&comercio=[Comercio]&tarjeta=[Tarjeta]
+   https://siangonzalez.github.io/mis-finanzas/#/applepay?monto=[Cantidad]&comercio=[Comercio]&tarjeta=[Tarjeta]
    ```
 
    Inserta `Cantidad`, `Comercio` y `Tarjeta` como variables del atajo, no como texto.
@@ -43,7 +43,7 @@ Cada vez que pagas con Apple Pay, el iPhone le pasa la compra a la app.
 2. Acción: **Abrir URLs** con:
 
    ```
-   https://TU-APP/#/alerta?texto=[Mensaje]
+   https://siangonzalez.github.io/mis-finanzas/#/alerta?texto=[Mensaje]
    ```
 
    Usa *Codificar URL* sobre el mensaje antes de armar la dirección.
