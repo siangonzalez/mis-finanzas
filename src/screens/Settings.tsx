@@ -112,7 +112,7 @@ function GmailSettings() {
 
   const saveAndTest = async () => {
     const cleanUrl = url.trim()
-    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(cleanUrl)) {
+    if (!/^https:\/\/script\.google\.com\/(a\/macros\/[^/]+|macros)\/s\/.+\/exec$/.test(cleanUrl)) {
       setStatus('La URL debe ser la de la aplicación web del script y terminar en /exec.')
       return
     }
