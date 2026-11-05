@@ -93,7 +93,7 @@ export default function App() {
 
       <main className="content">
         {movements === undefined ? null : tab === 'resumen' ? (
-          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} onOpenDebts={() => setTab('deudas')} onOpenDiagnosis={() => setTab('diagnostico')} />
+          <Summary month={month} movements={movements} onAdd={() => setEditing('new')} onOpenDebts={() => setTab('deudas')} onOpenDiagnosis={() => setTab('diagnostico')} onOpenInbox={() => setTab('revisar')} />
         ) : tab === 'movimientos' ? (
           <Movements movements={movements} onEdit={setEditing} />
         ) : tab === 'revisar' ? (

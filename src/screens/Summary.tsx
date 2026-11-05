@@ -1,5 +1,7 @@
 import { DebtReminder } from '../components/DebtReminder'
 import { DiagnosisLink } from './Diagnosis'
+import { loadRealBalance, RealBalance } from '../components/RealBalance'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { findCategory } from '../data/categories'
 import type { Movement } from '../data/db'
 import { currentMonth, daysInMonth, money } from '../lib/format'
@@ -11,14 +13,18 @@ interface Props {
   onAdd: () => void
   onOpenDebts: () => void
   onOpenDiagnosis: () => void
+  onOpenInbox: () => void
 }
 
-export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis }: Props) {
+export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis, onOpenInbox }: Props) {
   const s = monthStats(movements)
+  const real = useLiveQuery(loadRealBalance, [])
+  const isCurrent = month === currentMonth()
 
   if (movements.length === 0) {
     return (
       <>
+      {isCurrent && <RealBalance onReview={onOpenInbox} />}
       <DebtReminder onOpen={onOpenDebts} />
       <DiagnosisLink onOpen={onOpenDiagnosis} />
       <section className="empty">
@@ -32,16 +38,19 @@ export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis 
   }
 
   const savedPct = s.income > 0 ? Math.round((s.remaining / s.income) * 100) : 0
-  const isCurrent = month === currentMonth()
   const day = isCurrent ? new Date().getDate() : daysInMonth(month)
   const daysLeft = daysInMonth(month) - day + 1
-  const perDay = isCurrent && s.remaining > 0 ? s.remaining / daysLeft : 0
+  // No se puede gastar más de lo que hay en las cuentas, aunque el mes vaya en positivo.
+  const available = real?.date.startsWith(month) ? Math.min(s.remaining, real.total) : s.remaining
+  const perDay = isCurrent && available > 0 ? available / daysLeft : 0
   const maxCat = s.byCategory[0]?.total ?? 1
 
   return (
     <>
+      {isCurrent && <RealBalance onReview={onOpenInbox} />}
+
       <section className="hero card">
-        <p className="muted">¿Cuánto te queda?</p>
+        <p className="muted">Balance del mes</p>
         <p className={`hero-amount ${s.remaining < 0 ? 'neg' : 'pos'}`}>{money(s.remaining)}</p>
         <p className="muted small">
           {s.income === 0
@@ -49,6 +58,7 @@ export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis 
             : s.remaining < 0
               ? 'Estás gastando más de lo que recibiste este mes.'
               : `Te queda el ${savedPct} % de lo que recibiste.`}
+          {' '}Es lo que entró menos lo que salió, no tu saldo.
         </p>
         {perDay > 0 && <p className="pill">Puedes gastar {money(perDay)} al día por {daysLeft} días</p>}
       </section>

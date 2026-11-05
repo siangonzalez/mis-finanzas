@@ -1,4 +1,5 @@
 import type { Budget, CardRecord, Debt, InboxItem, Movement, Receivable } from '../data/db'
+import type { Reconciliation } from './balances'
 import { cardPaid } from './cards'
 import { overdueInstallments, payoffProjection, simulateDebt } from './debt'
 import { daysBetween, proposedPayments } from './receivables'
@@ -7,7 +8,7 @@ import { currentMonth, daysInMonth, money, monthLabel, shiftMonth } from './form
 
 // Diagnóstico: reglas fijas sobre tus propios datos. Todo se calcula en el
 // dispositivo. Muestra hechos, cálculos y opciones; decidir te toca a ti, y no
-// dice en qué invertir. No conoce tus saldos, ahorros ni inversiones.
+// dice en qué invertir. Solo conoce los saldos que anotes, no tus ahorros ni inversiones.
 
 export type Tone = 'alerta' | 'atencion' | 'info' | 'bien'
 export type GoTo = 'revisar' | 'movimientos' | 'presupuesto' | 'deudas'
@@ -30,6 +31,7 @@ export interface DiagnosisInput {
   cards: CardRecord[]
   inbox: InboxItem[]
   receivables: Receivable[]
+  real?: Reconciliation | null
 }
 
 export interface Diagnosis {
@@ -158,6 +160,17 @@ function debtLines({ cards, debts, inbox, today }: DiagnosisInput) {
 
 function dataFindings(input: DiagnosisInput, months: string[]): Finding[] {
   const out: Finding[] = []
+  const { real } = input
+  if (real?.gap && daysBetween(real.date, input.today) <= 7) {
+    const amount = money(Math.abs(real.gap))
+    out.push({
+      id: 'saldo-real', tone: 'atencion', area: 'Tus datos', go: 'revisar',
+      title: real.gap < 0 ? `Faltan ${real.atLeast ? 'al menos ' : ''}${amount} de gastos por registrar` : `Hay ${amount} más de lo esperado en tus cuentas`,
+      detail: real.gap < 0
+        ? 'Tus saldos reales no cuadran con lo registrado. Busca en Revisar, en pagos sin alerta (QR, Nequi a Nequi) y en retiros. Mientras tanto, tus gastos se ven más bajos de lo que son.'
+        : 'Falta registrar un ingreso o se contó un gasto de más.',
+    })
+  }
   const pending = input.inbox.filter((i) => i.status === 'pendiente' && i.role === 'movimiento' && !i.deleted).length
   if (pending) {
     out.push({

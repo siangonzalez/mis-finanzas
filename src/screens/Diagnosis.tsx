@@ -1,5 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { activeCards, activeReceivables, budgetsInMonth, db, movementsSince } from '../data/db'
+import { loadRealBalance } from '../components/RealBalance'
 import { diagnose, diagnosisStart, type Finding, type GoTo, type Tone } from '../lib/diagnosis'
 import { currentMonth, money, monthLabel, todayISO } from '../lib/format'
 
@@ -12,6 +13,7 @@ async function loadDiagnosis() {
     cards: await activeCards(),
     inbox: (await db.inbox.toArray()).filter((i) => !i.deleted),
     receivables: await activeReceivables(),
+    real: await loadRealBalance(),
   })
 }
 
@@ -99,7 +101,7 @@ export function Diagnosis({ onGo }: { onGo: (tab: GoTo) => void }) {
       ))}
 
       <p className="muted small group-note">
-        Este diagnóstico se calcula en tu dispositivo con lo que hay en la app. No conoce tus saldos, ahorros ni inversiones, y no
+        Este diagnóstico se calcula en tu dispositivo con lo que hay en la app. No conoce tus ahorros ni inversiones, solo los saldos que anotes, y no
         reemplaza a un asesor financiero. Los intereses son aproximados.
       </p>
     </>

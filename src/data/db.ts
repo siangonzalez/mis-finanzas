@@ -5,7 +5,7 @@ import type { CardSummary } from '../import/statements'
 
 // Todo vive en IndexedDB del dispositivo. Las funciones de este archivo son la
 // única puerta a los datos. Los movimientos, la bandeja, el presupuesto, las
-// reglas, las tarjetas y los cobros se sincronizan entre tus dispositivos (ver sync.ts);
+// reglas, las tarjetas, los cobros y los saldos se sincronizan entre tus dispositivos (ver sync.ts);
 // las deudas van por su lado (debtSync.ts).
 
 export type Recurrence = 'fijo' | 'ocasional'
@@ -94,6 +94,15 @@ export interface Receivable extends Synced {
   createdAt: number
 }
 
+// Saldo de una cuenta en una fecha, anotado por ti. Se guarda el historial para
+// comparar cada anotación con la anterior (ver lib/balances.ts).
+export interface AccountBalance extends Synced {
+  id: string // `${date}|${account}`
+  date: string
+  account: string
+  amount: number
+}
+
 export interface Debt extends DebtTerms {
   id: string
   name: string // con quién es la deuda
@@ -111,6 +120,7 @@ const db = new Dexie('finanzas') as Dexie & {
   debts: EntityTable<Debt, 'id'>
   cards: EntityTable<CardRecord, 'id'>
   cobros: EntityTable<Receivable, 'id'>
+  saldos: EntityTable<AccountBalance, 'id'>
 }
 
 db.version(1).stores({
@@ -180,9 +190,14 @@ db.version(7)
   .stores({ cobros: 'id, updatedAt' })
   .upgrade((tx) => tx.table('settings').put({ key: 'sync.since', value: '0' }))
 
+// Saldos reales de tus cuentas. Igual que con los cobros, se vuelve a pedir todo a la hoja.
+db.version(8)
+  .stores({ saldos: 'id, date, updatedAt' })
+  .upgrade((tx) => tx.table('settings').put({ key: 'sync.since', value: '0' }))
+
 // Toda escritura marca la fecha del cambio, salvo cuando se está aplicando
 // lo que llega del otro dispositivo (que ya trae su propia fecha).
-export const SYNCED_TABLES = ['movs', 'budgets', 'inbox', 'rules', 'cards', 'cobros'] as const
+export const SYNCED_TABLES = ['movs', 'budgets', 'inbox', 'rules', 'cards', 'cobros', 'saldos'] as const
 export type SyncedTable = (typeof SYNCED_TABLES)[number]
 let applyingRemote = false
 const changeListeners = new Set<() => void>()
@@ -258,6 +273,14 @@ export function deleteReceivable(id: string) {
   return db.cobros.update(id, { deleted: true })
 }
 
+export async function activeBalances() {
+  return (await db.saldos.toArray()).filter(alive)
+}
+
+export function saveBalances(date: string, rows: { account: string; amount: number }[]) {
+  return db.saldos.bulkPut(rows.map((r) => ({ ...r, id: `${date}|${r.account}`, date, deleted: false })))
+}
+
 export async function getSetting(key: string) {
   return (await db.settings.get(key))?.value ?? ''
 }
@@ -322,6 +345,7 @@ export interface Backup {
   debts?: Debt[]
   cards?: CardSummary[]
   cobros?: Receivable[]
+  saldos?: AccountBalance[]
 }
 
 export async function exportBackup(): Promise<Backup> {
@@ -336,10 +360,11 @@ export async function exportBackup(): Promise<Backup> {
     debts: await db.debts.toArray(),
     cards: await activeCards(),
     cobros: await activeReceivables(),
+    saldos: await activeBalances(),
   }
 }
 
-const ALL = () => [db.movs, db.budgets, db.inbox, db.rules, db.debts, db.cards, db.cobros]
+const ALL = () => [db.movs, db.budgets, db.inbox, db.rules, db.debts, db.cards, db.cobros, db.saldos]
 
 // Marca todo como borrado (lápidas), para que en tus otros dispositivos también se borre.
 async function tombstoneAll() {
@@ -349,6 +374,7 @@ async function tombstoneAll() {
   await db.rules.toCollection().modify({ deleted: true })
   await db.cards.toCollection().modify({ deleted: true })
   await db.cobros.toCollection().modify({ deleted: true })
+  await db.saldos.toCollection().modify({ deleted: true })
 }
 
 export async function importBackup(data: Backup) {
@@ -379,6 +405,7 @@ export async function importBackup(data: Backup) {
     await db.debts.bulkPut(data.debts ?? [])
     await db.cards.bulkPut((data.cards ?? []).map(fresh))
     await db.cobros.bulkPut((data.cobros ?? []).map(fresh))
+    await db.saldos.bulkPut((data.saldos ?? []).map(fresh))
   })
 }
 

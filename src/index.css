@@ -296,3 +296,11 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
 .finding-items li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
 .finding-items span { min-width: 0; overflow-wrap: anywhere; }
 .finding-items b { flex-shrink: 0; max-width: 60%; text-align: right; font-weight: 600; }
+
+.real-balance { display: flex; flex-direction: column; gap: 4px; }
+.real-balance .group-head { margin: 0; }
+.real-balance > .link { align-self: flex-start; padding: 0; }
+.real-balance.warn { border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.real-total { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.real-gap { margin: 6px 0 0; line-height: 1.45; color: var(--warn); }
+.real-gap .link { padding: 0; }
