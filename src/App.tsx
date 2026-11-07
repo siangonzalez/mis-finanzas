@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, movementsInMonth, type Movement } from './data/db'
 import { handleDeepLink } from './import/deeplink'
 import { startAutoSync } from './data/sync'
-import { currentMonth, monthLabel, shiftMonth } from './lib/format'
+import { amountsHidden, currentMonth, monthLabel, setAmountsHidden, shiftMonth } from './lib/format'
 import { Summary } from './screens/Summary'
 import { Movements } from './screens/Movements'
 import { Inbox } from './screens/Inbox'
@@ -44,6 +44,7 @@ export default function App() {
   const movements = useLiveQuery(() => movementsInMonth(month), [month])
   const pendingCount = useLiveQuery(() => db.inbox.where('status').equals('pendiente').count(), []) ?? 0
   const [toast, setToast] = useState('')
+  const [hidden, setHidden] = useState(amountsHidden)
 
   const setTab = (t: Tab) => {
     setTabState(t)
@@ -52,6 +53,11 @@ export default function App() {
     } catch {
       /* sin almacenamiento: solo no recordamos la pestaña */
     }
+  }
+
+  const toggleHidden = () => {
+    setAmountsHidden(!hidden)
+    setHidden(!hidden)
   }
 
   useEffect(() => startAutoSync(), [])
@@ -81,6 +87,18 @@ export default function App() {
               <button aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
             </div>
           )}
+          <button
+            className={`gear ${hidden ? 'on' : ''}`}
+            aria-label={hidden ? 'Mostrar montos' : 'Ocultar montos'}
+            aria-pressed={hidden}
+            onClick={toggleHidden}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              {hidden && <path d="M4 4l16 16" />}
+            </svg>
+          </button>
           <button
             className={`gear ${tab === 'ajustes' ? 'on' : ''}`}
             aria-label="Ajustes"

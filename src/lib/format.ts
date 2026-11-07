@@ -1,6 +1,32 @@
 const cop = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 
+// Modo privado: oculta los montos en pantalla, como el ojo de la app del banco.
+// Se recuerda en cada dispositivo, no se sincroniza.
+function readHidden() {
+  try {
+    return localStorage.getItem('hideAmounts') === '1'
+  } catch {
+    return false
+  }
+}
+
+let hidden = readHidden()
+
+export function amountsHidden() {
+  return hidden
+}
+
+export function setAmountsHidden(value: boolean) {
+  hidden = value
+  try {
+    localStorage.setItem('hideAmounts', value ? '1' : '0')
+  } catch {
+    /* sin almacenamiento: dura hasta cerrar la app */
+  }
+}
+
 export function money(n: number) {
+  if (hidden) return '$ ••••'
   return cop.format(Math.round(n)).replace(/\s/g, ' ')
 }
 

@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { activeCards, activeReceivables, budgetsInMonth, db, movementsSince } from '../data/db'
 import { loadRealBalance } from '../components/RealBalance'
 import { diagnose, diagnosisStart, type Finding, type GoTo, type Tone } from '../lib/diagnosis'
-import { currentMonth, money, monthLabel, todayISO } from '../lib/format'
+import { amountsHidden, currentMonth, money, monthLabel, todayISO } from '../lib/format'
 
 async function loadDiagnosis() {
   return diagnose({
@@ -59,7 +59,8 @@ function FindingCard({ f, onGo }: { f: Finding; onGo: (tab: GoTo) => void }) {
 }
 
 export function Diagnosis({ onGo }: { onGo: (tab: GoTo) => void }) {
-  const d = useLiveQuery(loadDiagnosis, [])
+  // Los textos ya traen los montos, así que se recalculan al ocultarlos o mostrarlos.
+  const d = useLiveQuery(loadDiagnosis, [amountsHidden()])
   if (!d) return null
   const groups = (['alerta', 'atencion', 'info', 'bien'] as Tone[])
     .map((tone) => ({ tone, list: d.findings.filter((f) => f.tone === tone) }))

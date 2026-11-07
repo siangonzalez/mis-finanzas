@@ -304,3 +304,12 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
 .real-total { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .real-gap { margin: 6px 0 0; line-height: 1.45; color: var(--warn); }
 .real-gap .link { padding: 0; }
+
+/* Teléfonos: que quepan el título, el mes, el ojo y Ajustes. */
+@media (max-width: 420px) {
+  .topbar h1 { font-size: 18px; white-space: nowrap; }
+  .topbar-right { gap: 6px; }
+  .month-picker { padding: 2px; font-size: 13px; }
+  .month-picker span { min-width: 76px; }
+  .month-picker button { width: 26px; height: 28px; }
+}
