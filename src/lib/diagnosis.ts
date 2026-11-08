@@ -4,7 +4,7 @@ import type { TaxYear } from './tax'
 import { honorariosIn, pilaDue, pilaEstimate, pilaPayments, type PilaConfig } from './pila'
 import { cardPaid } from './cards'
 import { overdueInstallments, payoffProjection, simulateDebt } from './debt'
-import { daysBetween, proposedPayments } from './receivables'
+import { daysBetween, proposedPayments, remaining } from './receivables'
 import { ANT_EXPENSE_LIMIT, monthStats } from './stats'
 import { currentMonth, daysInMonth, money, monthLabel, shiftMonth } from './format'
 
@@ -356,7 +356,7 @@ function collectionFindings(input: DiagnosisInput, avgIncome: number): Finding[]
   const { receivables, inbox, today, debts } = input
   const pending = receivables.filter((r) => !r.paid)
   const out: Finding[] = []
-  const total = pending.reduce((s, r) => s + r.amount, 0)
+  const total = pending.reduce((s, r) => s + remaining(r), 0)
   const age = (r: Receivable) => daysBetween(r.sentDate, today)
 
   const proposals = proposedPayments(pending, inbox)
@@ -371,9 +371,9 @@ function collectionFindings(input: DiagnosisInput, avgIncome: number): Finding[]
   if (late.length) {
     out.push({
       id: 'cobros-atrasados', tone: 'atencion', area: 'Por cobrar', go: 'deudas',
-      title: `${plural(late.length, 'cobro atrasado', 'cobros atrasados')}: ${money(late.reduce((s, r) => s + r.amount, 0))}`,
+      title: `${plural(late.length, 'cobro atrasado', 'cobros atrasados')}: ${money(late.reduce((s, r) => s + remaining(r), 0))}`,
       detail: 'Ya pasó la fecha acordada o llevan más de 30 días sin una fecha de pago.',
-      items: late.map((r) => ({ label: r.client, value: `${money(r.amount)} · hace ${plural(age(r), 'día')}` })),
+      items: late.map((r) => ({ label: r.client, value: `${money(remaining(r))} · hace ${plural(age(r), 'día')}` })),
     })
   }
   if (total) {
@@ -529,7 +529,7 @@ export function diagnose(input: DiagnosisInput): Diagnosis {
     avgExpenses: avg(stats.map((s) => s.expenses)),
     monthlyInterest: lines.reduce((s, l) => s + l.monthlyInterest, 0),
     monthlyDebtPayments: lines.reduce((s, l) => s + l.payment, 0),
-    toCollect: input.receivables.filter((r) => !r.paid).reduce((s, r) => s + r.amount, 0),
+    toCollect: input.receivables.filter((r) => !r.paid).reduce((s, r) => s + remaining(r), 0),
     findings,
   }
 }

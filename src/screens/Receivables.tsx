@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import {
-  activeReceivables, db, deleteReceivable, markReceivablePaid, rejectReceivablePayment, saveMovement, saveReceivable, type InboxItem, type Receivable,
+  activeReceivables, addReceivablePayment, db, deleteReceivable, markReceivablePaid, rejectReceivablePayment, removeReceivablePayment, saveMovement, saveReceivable,
+  type InboxItem, type Receivable,
 } from '../data/db'
 import { updateSuggestion } from '../import/inbox'
-import { daysBetween, proposedPayments } from '../lib/receivables'
+import { daysBetween, proposedPayments, received, remaining } from '../lib/receivables'
 import { money, moneyInput, parseMoney, todayISO } from '../lib/format'
 
 function shortDate(d: string) {
@@ -29,7 +30,7 @@ export function ReceivableList() {
   const pending = list.filter((r) => !r.paid).sort((a, b) => a.sentDate.localeCompare(b.sentDate))
   const paid = list.filter((r) => r.paid).sort((a, b) => b.paid!.date.localeCompare(a.paid!.date))
   const proposals = proposedPayments(pending, inbox)
-  const total = pending.reduce((s, r) => s + r.amount, 0)
+  const total = pending.reduce((s, r) => s + remaining(r), 0)
 
   return (
     <section>
@@ -48,6 +49,7 @@ export function ReceivableList() {
           const proposal = proposals.get(r.id)
           const late = r.dueDate && r.dueDate < today ? daysBetween(r.dueDate, today) : 0
           const open = openId === r.id
+          const abonado = received(r)
           return (
             <li key={r.id} className={`card card-debt ${late ? 'alert' : ''}`}>
               <button className="debt-item-row plain" onClick={() => setOpenId(open ? null : r.id)}>
@@ -59,8 +61,9 @@ export function ReceivableList() {
                       : r.dueDate ? `Enviada el ${shortDate(r.sentDate)} · pago el ${shortDate(r.dueDate)}`
                       : `Enviada ${ago(daysBetween(r.sentDate, today), r.sentDate)}`}
                   </span>
+                  {abonado > 0 && <span className="small pos">Te abonaron {money(abonado)} de {money(r.amount)} · faltan {money(remaining(r))}</span>}
                 </span>
-                <b className="debt-balance">{money(r.amount)}</b>
+                <b className="debt-balance">{money(remaining(r))}</b>
               </button>
               {proposal && <Proposal r={r} item={proposal} />}
               {open && <Actions r={r} onEdit={() => setEditing(r)} onDone={() => setOpenId(null)} />}
@@ -108,14 +111,14 @@ export function ReceivableList() {
 // "¿Este ingreso es el pago?" Confirmarlo lo deja como pagado y el ingreso pasa a Honorarios.
 function Proposal({ r, item }: { r: Receivable; item: InboxItem }) {
   const confirm = async () => {
-    await markReceivablePaid(r.id, { date: item.date, amount: item.amount, inboxId: item.id })
+    await markReceivablePaid(r.id, { date: item.date, amount: received(r) + item.amount, inboxId: item.id })
     if (item.status === 'pendiente') await updateSuggestion(item, 'Honorarios', 'Honorarios')
   }
   return (
     <div className="proposal">
       <p className="small">
         💰 ¿Es este el pago? Te llegaron <b>{money(item.amount)}</b> de {item.merchant || item.bank} el {shortDate(item.date)}
-        {item.amount < r.amount && ` (${money(r.amount - item.amount)} menos, quizá por retención)`}.
+        {item.amount < remaining(r) && ` (${money(remaining(r) - item.amount)} menos, quizá por retención)`}.
       </p>
       <span className="head-actions">
         <button className="link pos" onClick={confirm}>Sí, es el pago</button>
@@ -128,12 +131,21 @@ function Proposal({ r, item }: { r: Receivable; item: InboxItem }) {
 function Actions({ r, onEdit, onDone }: { r: Receivable; onEdit: () => void; onDone: () => void }) {
   const [paying, setPaying] = useState(false)
   const [date, setDate] = useState(todayISO())
-  const [amount, setAmount] = useState(r.amount)
+  const due = remaining(r)
+  const [amount, setAmount] = useState(due)
   const [alsoIncome, setAlsoIncome] = useState(true)
+  // Menos del 85 % de lo que falta es un abono; más, el pago completo (lo demás sería retención).
+  const [partial, setPartial] = useState(false)
+  const [touched, setTouched] = useState(false)
+  const changeAmount = (n: number) => {
+    setAmount(n)
+    if (!touched) setPartial(n > 0 && n < due * 0.85)
+  }
 
   const save = async () => {
     if (!amount) return
-    await markReceivablePaid(r.id, { date, amount })
+    if (partial) await addReceivablePayment(r.id, { date, amount })
+    else await markReceivablePaid(r.id, { date, amount: received(r) + amount })
     if (alsoIncome) {
       await saveMovement({
         date, kind: 'ingreso', category: 'Honorarios', subcategory: 'Honorarios', description: `${r.client} · ${r.concept}`,
@@ -145,11 +157,26 @@ function Actions({ r, onEdit, onDone }: { r: Receivable; onEdit: () => void; onD
 
   if (!paying) {
     return (
+      <>
+        {(r.payments ?? []).length > 0 && (
+          <ul className="finding-items">
+            {r.payments!.map((p, i) => (
+              <li key={i} className="small">
+                <span>Abono del {shortDate(p.date)}</span>
+                <span>
+                  <b>{money(p.amount)}</b>{' '}
+                  <button className="link neg" onClick={() => confirm(`¿Quitar el abono de ${money(p.amount)}?`) && removeReceivablePayment(r.id, i)}>Quitar</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       <span className="head-actions receivable-actions">
         <button className="link pos" onClick={() => setPaying(true)}>Me pagaron</button>
         <button className="link" onClick={onEdit}>Editar</button>
         <button className="link neg" onClick={() => confirm(`¿Borrar la cuenta de cobro a ${r.client}?`) && deleteReceivable(r.id)}>Borrar</button>
       </span>
+      </>
     )
   }
   return (
@@ -161,14 +188,25 @@ function Actions({ r, onEdit, onDone }: { r: Receivable; onEdit: () => void; onD
         </label>
         <label>
           <span>Te pagaron</span>
-          <input inputMode="numeric" autoFocus value={moneyInput(amount)} onChange={(e) => setAmount(parseMoney(e.target.value))} />
+          <input inputMode="numeric" autoFocus value={moneyInput(amount)} onChange={(e) => changeAmount(parseMoney(e.target.value))} />
         </label>
       </div>
+      <label className="check">
+        <input type="checkbox" checked={partial} onChange={(e) => { setTouched(true); setPartial(e.target.checked) }} />
+        <span>
+          {partial
+            ? `Es un abono: todavía te deberían ${money(Math.max(0, due - amount))}.`
+            : 'Es un abono: todavía me deben una parte.'}
+        </span>
+      </label>
+      {!partial && amount > 0 && amount < due && (
+        <p className="muted small">Se cierra la cuenta de cobro; los {money(due - amount)} de diferencia quedan como posible retención.</p>
+      )}
       <label className="check">
         <input type="checkbox" checked={alsoIncome} onChange={(e) => setAlsoIncome(e.target.checked)} />
         <span>Anotarlo en mis ingresos (Honorarios). Desmárcalo si el pago ya llegó en tus alertas.</span>
       </label>
-      <button className="primary" disabled={!amount} onClick={save}>Guardar</button>
+      <button className="primary" disabled={!amount} onClick={save}>{partial ? 'Guardar abono' : 'Guardar'}</button>
     </div>
   )
 }

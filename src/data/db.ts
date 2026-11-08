@@ -89,7 +89,8 @@ export interface Receivable extends Synced {
   sentDate: string // cuándo enviaste la cuenta de cobro
   dueDate?: string // cuándo quedaron de pagarte
   keywords: string[] // cómo aparece el cliente en las alertas del banco
-  paid?: { date: string; amount: number; inboxId?: string }
+  paid?: { date: string; amount: number; inboxId?: string } // amount: todo lo que te pagaron, abonos incluidos
+  payments?: { date: string; amount: number; inboxId?: string }[] // abonos mientras todavía te deben
   rejected?: string[]
   createdAt: number
 }
@@ -277,6 +278,16 @@ export function saveReceivable(r: Omit<Receivable, 'id' | 'createdAt'> & { id?: 
 
 export function markReceivablePaid(id: string, paid: Receivable['paid']) {
   return db.cobros.update(id, { paid })
+}
+
+export async function addReceivablePayment(id: string, payment: { date: string; amount: number; inboxId?: string }) {
+  const r = await db.cobros.get(id)
+  if (r) await db.cobros.update(id, { payments: [...(r.payments ?? []), payment] })
+}
+
+export async function removeReceivablePayment(id: string, index: number) {
+  const r = await db.cobros.get(id)
+  if (r) await db.cobros.update(id, { payments: (r.payments ?? []).filter((_, i) => i !== index) })
 }
 
 export async function rejectReceivablePayment(id: string, inboxId: string) {

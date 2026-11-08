@@ -6,6 +6,7 @@ import {
 import { syncDebts, type SyncResult } from '../data/debtSync'
 import { cardPaid } from '../lib/cards'
 import { ReceivableList } from './Receivables'
+import { remaining } from '../lib/receivables'
 import { overdueInstallments, payoffProjection, simulateDebt } from '../lib/debt'
 import { money, moneyInput, monthLabel, parseMoney, todayISO } from '../lib/format'
 
@@ -43,7 +44,7 @@ function status(d: Debt, today: string) {
 export function Debts() {
   const debts = useLiveQuery(() => db.debts.toArray(), [])
   const cards = useLiveQuery(activeCards, []) ?? []
-  const toCollect = (useLiveQuery(activeReceivables, []) ?? []).filter((r) => !r.paid).reduce((s, r) => s + r.amount, 0)
+  const toCollect = (useLiveQuery(activeReceivables, []) ?? []).filter((r) => !r.paid).reduce((s, r) => s + remaining(r), 0)
   const fileRef = useRef<HTMLInputElement>(null)
   const [message, setMessage] = useState('')
   const [sync, setSync] = useState<SyncResult | null>(null)

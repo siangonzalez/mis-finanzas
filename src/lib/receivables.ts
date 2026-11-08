@@ -6,6 +6,10 @@ import type { InboxItem, Receivable } from '../data/db'
 // La app solo propone: tú confirmas que ese ingreso es el pago del cobro.
 
 const MIN_SHARE = 0.85
+
+// Lo que te han abonado y lo que todavía te deben de una cuenta de cobro.
+export const received = (r: Pick<Receivable, 'payments'>) => (r.payments ?? []).reduce((s, p) => s + p.amount, 0)
+export const remaining = (r: Pick<Receivable, 'amount' | 'payments' | 'paid'>) => (r.paid ? 0 : Math.max(0, r.amount - received(r)))
 const norm = (s: string) => s.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 // Palabras que no identifican a nadie en una alerta del banco.
@@ -25,18 +29,23 @@ export function nameMatches(r: Pick<Receivable, 'client' | 'keywords'>, merchant
 // usedIds: ingresos ya asignados a otro cobro.
 export function paymentCandidates(r: Receivable, inbox: InboxItem[], usedIds: Set<string> = new Set()) {
   if (r.paid) return []
+  // Si ya te abonaron una parte, se busca lo que falta.
+  const due = remaining(r)
+  if (due <= 0) return []
+  const abonos = new Set((r.payments ?? []).map((p) => p.inboxId).filter(Boolean))
   return inbox
     .filter(
       (i) =>
         i.kind === 'ingreso' &&
         (i.status === 'pendiente' || i.status === 'aceptado') &&
         i.date >= r.sentDate &&
-        i.amount >= r.amount * MIN_SHARE &&
-        i.amount <= r.amount * 1.005 &&
+        i.amount >= due * MIN_SHARE &&
+        i.amount <= due * 1.005 &&
         !usedIds.has(i.id) &&
+        !abonos.has(i.id) &&
         !r.rejected?.includes(i.id),
     )
-    .map((i) => ({ item: i, byName: nameMatches(r, i.merchant), exact: Math.abs(i.amount - r.amount) <= r.amount * 0.005 }))
+    .map((i) => ({ item: i, byName: nameMatches(r, i.merchant), exact: Math.abs(i.amount - due) <= due * 0.005 }))
     // Sin el nombre del cliente, solo vale un valor exacto (un ingreso cualquiera del 90 % sería adivinar).
     .filter((c) => c.byName || c.exact)
     .sort((a, b) => Number(b.byName) - Number(a.byName) || Number(b.exact) - Number(a.exact) || a.item.date.localeCompare(b.item.date))
@@ -44,7 +53,7 @@ export function paymentCandidates(r: Receivable, inbox: InboxItem[], usedIds: Se
 
 // Para cada cobro pendiente, el pago propuesto; un mismo ingreso se propone para un solo cobro.
 export function proposedPayments(list: Receivable[], inbox: InboxItem[]) {
-  const used = new Set(list.map((r) => r.paid?.inboxId).filter((x): x is string => Boolean(x)))
+  const used = new Set(list.flatMap((r) => [r.paid?.inboxId, ...(r.payments ?? []).map((p) => p.inboxId)]).filter((x): x is string => Boolean(x)))
   const out = new Map<string, InboxItem>()
   for (const r of [...list].sort((a, b) => a.sentDate.localeCompare(b.sentDate))) {
     const best = paymentCandidates(r, inbox, used)[0]

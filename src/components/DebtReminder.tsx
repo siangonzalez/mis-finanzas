@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { activeCards, activeReceivables, db } from '../data/db'
 import { cardPaid } from '../lib/cards'
 import { overdueInstallments, simulateDebt } from '../lib/debt'
-import { proposedPayments } from '../lib/receivables'
+import { proposedPayments, remaining } from '../lib/receivables'
 import { money, todayISO } from '../lib/format'
 
 // Tarjetas cortas en el Resumen para no perder de vista las deudas y los
@@ -54,7 +54,7 @@ export function DebtReminder({ onOpen }: { onOpen: () => void }) {
         <button className={`card debt-reminder ${late ? 'alert' : ''}`} onClick={onOpen}>
           <span>
             <span className="muted small">Por cobrar · {toCollect.length} cuenta{toCollect.length > 1 ? 's' : ''} de cobro</span>
-            <b>{money(toCollect.reduce((s, r) => s + r.amount, 0))}</b>
+            <b>{money(toCollect.reduce((s, r) => s + remaining(r), 0))}</b>
           </span>
           <span className="small">
             {proposals.size ? `💰 ${proposals.size === 1 ? 'Llegó un pago' : `Llegaron ${proposals.size} pagos`}, ¿es de un cobro?`

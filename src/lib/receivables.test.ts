@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InboxItem, Receivable } from '../data/db'
-import { paymentCandidates, proposedPayments } from './receivables'
+import { paymentCandidates, proposedPayments, remaining } from './receivables'
 
 const cobro = (over: Partial<Receivable> = {}): Receivable => ({
   id: 'zebra', client: 'Zebra Group', concept: 'Video presentación', amount: 800_000, sentDate: '2026-11-03', keywords: [], createdAt: 0, ...over,
@@ -50,5 +50,19 @@ describe('pagos de cuentas de cobro', () => {
     const b = cobro({ id: 'b', client: 'Otra', amount: 100_000, sentDate: '2026-11-02' })
     const p = proposedPayments([a, b], [ingreso('Recibiste de PILAR INMOBILIARIA', 100_000)])
     expect([...p.keys()]).toEqual(['a'])
+  })
+})
+
+describe('abonos', () => {
+  it('lo que falta descuenta los abonos, y un pago cerrado ya no debe nada', () => {
+    expect(remaining(cobro({ amount: 100_000, payments: [{ date: '2026-11-05', amount: 50_000 }] }))).toBe(50_000)
+    expect(remaining(cobro({ paid: { date: '2026-11-10', amount: 90_000 } }))).toBe(0)
+  })
+
+  it('después de un abono, propone el pago de lo que falta y no repite el ingreso del abono', () => {
+    const abono = ingreso('PILAR INMOBILIARIA', 50_000, '2026-11-05')
+    const r = cobro({ client: 'Pilar', amount: 100_000, payments: [{ date: '2026-11-05', amount: 50_000, inboxId: abono.id }] })
+    const resto = ingreso('PILAR INMOBILIARIA', 50_000, '2026-11-20')
+    expect(paymentCandidates(r, [abono, resto]).map((c) => c.item.id)).toEqual([resto.id])
   })
 })
