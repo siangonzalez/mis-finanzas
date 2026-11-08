@@ -14,6 +14,10 @@ export interface Reconciliation {
   gap: number
   since: string // desde cuándo se compara: la vez anterior, o el inicio del mes
   atLeast: boolean // con una sola anotación, solo se conoce el mínimo que falta
+  // Hoy: lo anotado más lo registrado después de ese día (el mismo día no,
+  // porque no se sabe si pasó antes o después de que miraste el banco).
+  now: number
+  changeSince: number
 }
 
 const MIN_GAP = 1_000 // menos de esto es redondeo o el 4x1000
@@ -38,7 +42,7 @@ export function recordedFlow(from: string, to: string, movements: Movement[], in
   return moved + own - marked
 }
 
-export function reconcile(entries: AccountBalance[], movements: Movement[], inbox: InboxItem[], cards: CardRecord[]): Reconciliation | null {
+export function reconcile(entries: AccountBalance[], movements: Movement[], inbox: InboxItem[], cards: CardRecord[], today = ''): Reconciliation | null {
   if (!entries.length) return null
   const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date))
   const accounts = [...new Set(sorted.map((e) => e.account))]
@@ -63,7 +67,8 @@ export function reconcile(entries: AccountBalance[], movements: Movement[], inbo
     since = dates[dates.length - 2]
     gap = total - (accounts.reduce((s, a) => s + at(a, since), 0) + recordedFlow(since, date, movements, inbox, cards))
   }
-  return { total, date, accounts: latest, gap: Math.abs(gap) < MIN_GAP ? 0 : gap, since, atLeast }
+  const changeSince = today > date ? recordedFlow(date, today, movements, inbox, cards) : 0
+  return { total, date, accounts: latest, gap: Math.abs(gap) < MIN_GAP ? 0 : gap, since, atLeast, now: total + changeSince, changeSince }
 }
 
 // Desde cuándo hacen falta movimientos para comparar.

@@ -15,7 +15,7 @@ export async function loadRealBalance() {
   const entries = await activeBalances()
   if (!entries.length) return null
   const movements = await movementsSince(reconcileStart(entries))
-  return reconcile(entries, movements, (await db.inbox.toArray()).filter((i) => !i.deleted), await activeCards())
+  return reconcile(entries, movements, (await db.inbox.toArray()).filter((i) => !i.deleted), await activeCards(), todayISO())
 }
 
 export function gapText(r: Reconciliation) {
@@ -43,11 +43,11 @@ export function RealBalance({ onReview }: { onReview: () => void }) {
             <span className="muted small">En tus cuentas</span>
             <button className="link" onClick={() => setEditing(true)}>Actualizar</button>
           </div>
-          <b className="real-total">{money(real.total)}</b>
+          <b className="real-total">{money(real.now)}</b>
           <p className="muted small">
-            {real.accounts.map((a) => `${a.account} ${money(a.amount)}`).join(' · ')}
-            {' · '}
-            {real.date === today ? 'hoy' : `al ${shortDate(real.date)}`}
+            {real.date === today
+              ? `Anotado hoy: ${real.accounts.map((a) => `${a.account} ${money(a.amount)}`).join(' · ')}`
+              : `Anotaste ${money(real.total)} el ${shortDate(real.date)}${real.changeSince ? `; desde entonces ${real.changeSince > 0 ? '+' : '−'}${money(Math.abs(real.changeSince))} en movimientos registrados` : '; desde entonces no hay movimientos registrados'}. Actualízalo de vez en cuando para que no se aleje del banco.`}
           </p>
           {real.gap !== 0 && (
             <p className="small real-gap">

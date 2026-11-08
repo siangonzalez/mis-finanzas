@@ -41,7 +41,7 @@ export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis,
   const day = isCurrent ? new Date().getDate() : daysInMonth(month)
   const daysLeft = daysInMonth(month) - day + 1
   // No se puede gastar más de lo que hay en las cuentas, aunque el mes vaya en positivo.
-  const available = real?.date.startsWith(month) ? Math.min(s.remaining, real.total) : s.remaining
+  const available = real?.date.startsWith(month) ? Math.min(s.remaining, real.now) : s.remaining
   const perDay = isCurrent && available > 0 ? available / daysLeft : 0
   const maxCat = s.byCategory[0]?.total ?? 1
 

@@ -87,3 +87,24 @@ it('pide movimientos desde la anotación anterior aunque sea de otro mes', () =>
   expect(reconcileStart([saldo('2026-11-05', 'Nequi', 1)])).toBe('2026-11-01')
   expect(reconcileStart([saldo('2026-10-20', 'Nequi', 1), saldo('2026-11-05', 'Nequi', 1)])).toBe('2026-10-20')
 })
+
+describe('saldo de hoy', () => {
+  const noted = [saldo('2026-11-05', 'Nequi', 129_349)]
+
+  it('resta lo que gastaste después de anotar el saldo', () => {
+    const r = reconcile(noted, [mov('2026-11-06', 30_000), mov('2026-11-07', 20_000), income('2026-11-07', 10_000)], [], [], '2026-11-08')
+    expect(r?.total).toBe(129_349)
+    expect(r?.changeSince).toBe(-40_000)
+    expect(r?.now).toBe(89_349)
+  })
+
+  it('no resta lo del mismo día en que lo anotaste, que ya estaba en el banco', () => {
+    expect(reconcile(noted, [mov('2026-11-05', 30_000)], [], [], '2026-11-08')?.now).toBe(129_349)
+  })
+
+  it('no cambia el aviso de lo que falta por registrar', () => {
+    const before = reconcile(noted, [income('2026-11-03', 500_000)], [], [], '2026-11-05')
+    const after = reconcile(noted, [income('2026-11-03', 500_000), mov('2026-11-06', 50_000)], [], [], '2026-11-08')
+    expect(after?.gap).toBe(before?.gap)
+  })
+})
