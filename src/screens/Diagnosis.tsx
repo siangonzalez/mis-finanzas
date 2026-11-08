@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { activeBalances, activeCards, activeReceivables, budgetsInMonth, db, movementsInYear, movementsSince } from '../data/db'
 import { loadRealBalance } from '../components/RealBalance'
 import { TaxCard } from '../components/TaxCard'
+import { loadPila } from '../components/Pila'
 import { taxYear } from '../lib/tax'
 import { diagnose, diagnosisStart, type Finding, type GoTo, type Tone } from '../lib/diagnosis'
 import { amountsHidden, currentMonth, money, monthLabel, todayISO } from '../lib/format'
@@ -22,6 +23,7 @@ async function loadDiagnosis() {
     inbox,
     receivables,
     real: await loadRealBalance(),
+    pila: await loadPila(),
   })
   return { ...d, tax }
 }

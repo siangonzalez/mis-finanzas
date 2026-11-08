@@ -1,6 +1,7 @@
 import type { Budget, CardRecord, Debt, InboxItem, Movement, Receivable } from '../data/db'
 import type { Reconciliation } from './balances'
 import type { TaxYear } from './tax'
+import { honorariosIn, pilaDue, pilaEstimate, pilaPayments, type PilaConfig } from './pila'
 import { cardPaid } from './cards'
 import { overdueInstallments, payoffProjection, simulateDebt } from './debt'
 import { daysBetween, proposedPayments } from './receivables'
@@ -34,6 +35,7 @@ export interface DiagnosisInput {
   receivables: Receivable[]
   real?: Reconciliation | null
   tax?: TaxYear
+  pila?: PilaConfig
 }
 
 export interface Diagnosis {
@@ -158,6 +160,30 @@ function debtLines({ cards, debts, inbox, today }: DiagnosisInput) {
     lines.push({ name: `Deuda con ${d.name}`, balance, ea, monthlyInterest: payoffProjection(d, balance, today).monthlyInterest, payment: d.installment })
   }
   return lines.sort((a, b) => b.ea - a.ea)
+}
+
+function pilaFindings({ pila, movements, today }: DiagnosisInput): Finding[] {
+  if (!pila) return []
+  const month = today.slice(0, 7)
+  if (!pila.active) {
+    const honorarios = honorariosIn(movements, month)
+    if (!honorarios) return []
+    return [{
+      id: 'pila-honorarios', tone: 'info', area: 'Seguridad social',
+      title: `En ${monthName(month)} recibiste ${money(honorarios)} en honorarios`,
+      detail: `Si cotizaras ese mes, el aporte de salud y pensión sería cerca de ${money(pilaEstimate(honorarios))} (28,5 % sobre el 40 % de lo recibido; la ARL va aparte). Puedes apartarlo para cuando vuelvas a afiliarte. La planilla está en pausa en Ajustes.`,
+    }]
+  }
+  if (!pila.dueDay || pilaPayments(movements, month).length) return []
+  const { due, days } = pilaDue(today, pila.dueDay)
+  if (days > 7) return []
+  return [{
+    id: 'pila', tone: days < 0 ? 'alerta' : 'atencion', area: 'Seguridad social',
+    title: days < 0 ? 'La planilla de seguridad social venció' : `La planilla vence el ${shortDate(due)}`,
+    detail: days < 0
+      ? 'No veo el pago de este mes en tus movimientos. Pagarla tarde suma intereses de mora, y algunas empresas la piden para pagar tus cuentas de cobro.'
+      : 'No veo todavía el pago de este mes en tus movimientos.',
+  }]
 }
 
 function dataFindings(input: DiagnosisInput, months: string[]): Finding[] {
@@ -494,6 +520,7 @@ export function diagnose(input: DiagnosisInput): Diagnosis {
     ...collectionFindings(input, avgIncome),
     ...budgetFindings(input),
     ...spendingFindings(input, months),
+    ...pilaFindings(input),
     ...dataFindings(input, months),
   ].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone))
   return {

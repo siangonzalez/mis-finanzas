@@ -1,5 +1,6 @@
 import { DebtReminder } from '../components/DebtReminder'
 import { DiagnosisLink } from './Diagnosis'
+import { PilaReminder } from '../components/Pila'
 import { loadRealBalance, RealBalance } from '../components/RealBalance'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { findCategory } from '../data/categories'
@@ -26,6 +27,7 @@ export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis,
       <>
       {isCurrent && <RealBalance onReview={onOpenInbox} />}
       <DebtReminder onOpen={onOpenDebts} />
+      {isCurrent && <PilaReminder onOpen={onOpenDiagnosis} />}
       <DiagnosisLink onOpen={onOpenDiagnosis} />
       <section className="empty">
         <p className="big-emoji">🐷</p>
@@ -64,6 +66,7 @@ export function Summary({ month, movements, onAdd, onOpenDebts, onOpenDiagnosis,
       </section>
 
       <DebtReminder onOpen={onOpenDebts} />
+      {isCurrent && <PilaReminder onOpen={onOpenDiagnosis} />}
       <DiagnosisLink onOpen={onOpenDiagnosis} />
 
       <section className="grid2">

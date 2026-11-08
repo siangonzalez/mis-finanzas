@@ -4,6 +4,7 @@ import { syncGmail } from '../import/gmail'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { syncNow } from '../data/sync'
 import { todayISO } from '../lib/format'
+import { PilaSettings } from '../components/Pila'
 
 function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }))
@@ -71,6 +72,7 @@ export function Settings() {
           <li>Te llega un correo de prueba con lo que tienes pendiente hoy.</li>
         </ol>
       </details>
+      <PilaSettings />
       <ShortcutSettings />
 
       <section className="card">
