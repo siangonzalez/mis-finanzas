@@ -51,11 +51,12 @@ export async function syncGmail(days?: number) {
 
 // Extractos nuevos del correo. La primera vez busca los del último mes y
 // medio; después, desde la última revisión. El script manda pocos por vez.
-export async function fetchMailStatements() {
-  const since = Number(await getSetting('extractos.since')) || Date.now() - 45 * 86_400_000
+// Con `from` (por ejemplo, el 1 de enero) trae también los viejos.
+export async function fetchMailStatements(from?: number) {
+  const since = from ?? (Number(await getSetting('extractos.since')) || Date.now() - 45 * 86_400_000)
   const start = Date.now()
   let added = 0
-  for (let round = 0; round < 5; round++) {
+  for (let round = 0; round < (from ? 20 : 5); round++) {
     const seen = (await db.extractos.toArray()).map((s) => s.id)
     let data: StatementsResponse
     try {

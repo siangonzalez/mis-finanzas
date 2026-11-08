@@ -37,6 +37,8 @@ Para agregar otro banco, súmalo a la lista `SENDERS` del script y crea una nuev
 
 Con el código nuevo del script, cada vez que la app revisa tu Gmail también trae los extractos que llegan como adjunto (PDF o Word, en correos que dicen "extracto" o "estado de cuenta"). La app revisa el correo sola al abrirla, si pasaron más de 3 horas, y con el botón **Revisar Gmail ahora**. Los extractos aparecen en **Revisar → Extractos que llegaron por correo**: tocas **Leer**, escribes la contraseña del PDF si la tiene, y la app agrega para revisar solo los movimientos que no tenías. La contraseña no se guarda.
 
+Para traer los de meses anteriores (por ejemplo, para la renta), toca **Revisar → Buscar extractos desde enero en el correo** y luego **Leer todos**. Si cada banco tiene su clave, la app te la pide una vez por banco.
+
 Para activarlo, pega el código nuevo y crea una **Nueva versión** de la implementación, como en "Actualizar el script". No pide permisos nuevos. Para probar, ejecuta `probarExtractos` y mira el registro.
 
 ### Recordatorios de pagos por correo

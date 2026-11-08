@@ -146,10 +146,13 @@ function extractos(since, seen) {
   seen.forEach(function (id) { vistos[id] = true; });
   var query = 'has:attachment (filename:pdf OR filename:docx) (extracto OR "estado de cuenta" OR "estados de cuenta")' +
     ' after:' + Math.floor(since / 1000) + ' -in:sent -in:spam -in:trash';
-  var threads = GmailApp.search(query, 0, 50);
   var out = [];
   var more = false;
 
+  // De 50 en 50 hilos, para llegar también a los extractos viejos.
+  for (var start = 0; start < 1000 && !more; start += 50) {
+    var threads = GmailApp.search(query, start, 50);
+    if (!threads.length) break;
   for (var i = 0; i < threads.length && !more; i++) {
     var messages = threads[i].getMessages();
     for (var j = 0; j < messages.length; j++) {
@@ -173,6 +176,7 @@ function extractos(since, seen) {
         }),
       });
     }
+  }
   }
   return { statements: out, more: more };
 }
