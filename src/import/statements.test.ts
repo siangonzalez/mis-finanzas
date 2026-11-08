@@ -135,6 +135,11 @@ describe('extracto de Tuya (tarjeta de crédito)', () => {
     expect(by('Seguro deudores Tuya')?.parsed.amount).toBe(3250)
   })
 
+  it('un avance es deuda entre tus cuentas, no un gasto', () => {
+    const adv = statementFromPdfLines([...lines.slice(0, 2), '2026/09/10 +AVANCE EN EFECTIVO 300.000,00 300.000,00 0,00 2,18% 29,62% 1/1', ...lines.slice(-2)])
+    expect(adv.items[0]).toMatchObject({ own: true, parsed: { kind: 'gasto', amount: 300000, merchant: 'Avance de la tarjeta Tuya' } })
+  })
+
   it('el pago a la tarjeta es entre tus cuentas, no un ingreso', () => {
     expect(by('Pago a la tarjeta Tuya')).toMatchObject({ own: true, parsed: { amount: 672755 } })
     expect(by('Ajuste o devolución Tuya')).toMatchObject({ own: false, parsed: { kind: 'ingreso', amount: 1259 } })
@@ -338,6 +343,7 @@ describe('extracto de tarjeta de crédito Davivienda', () => {
     '02Sep2026 INTERES MORA C $1,322 0 de 0 $0 $1,322 $0 1939005 0.00',
     '05Sep2026 MERCADO EL VECINO $400,000 1 de 12 $0 $33,333 $366,667 1939006 28.50',
     '06Sep2026 PAGO PSE -$234,572 0 de 0 $0 -$234,572 $0 1939007 0.00',
+    '07Sep2026 AVANCE APP $500,000 1 de 12 $0 $41,667 $458,333 1939008 30.00',
     'Banco Davivienda S.A.',
   ]
 
@@ -345,7 +351,7 @@ describe('extracto de tarjeta de crédito Davivienda', () => {
     const { card } = statementFromPdfLines(lines)
     expect(card).toEqual({
       id: 'davivienda-1234', bank: 'Davivienda', last4: '1234', cutDate: '2026-09-08', dueDate: '2026-09-25',
-      totalDebt: 401_322, minPayment: 51_322, available: 8_598_678, limit: 9_000_000, ea: 0.285,
+      totalDebt: 401_322, minPayment: 51_322, available: 8_598_678, limit: 9_000_000, ea: 0.3,
     })
   })
 
@@ -355,6 +361,7 @@ describe('extracto de tarjeta de crédito Davivienda', () => {
       ['2026-09-02', 'gasto', 1_322, 'Intereses de mora tarjeta Davivienda', false, 'T. Crédito *1234'],
       ['2026-09-05', 'gasto', 400_000, 'MERCADO EL VECINO', false, 'T. Crédito *1234'],
       ['2026-09-06', 'ingreso', 234_572, 'Pago a la tarjeta Davivienda', true, 'T. Crédito *1234'],
+      ['2026-09-07', 'gasto', 500_000, 'Avance de la tarjeta Davivienda', true, 'T. Crédito *1234'],
     ])
   })
 })

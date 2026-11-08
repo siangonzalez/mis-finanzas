@@ -174,7 +174,11 @@ export function tuyaItems(lines: string[]): StatementItem[] {
 
     let parsed: ParsedAlert
     let own = false
-    if (charge) {
+    if (charge && /AVANCE/i.test(desc)) {
+      // Un avance pasa plata de la tarjeta a tu cuenta: es deuda, no gasto.
+      own = true
+      parsed = { ...base, kind: 'gasto', type: 'transferencia-enviada', merchant: 'Avance de la tarjeta Tuya' }
+    } else if (charge) {
       const label = /^CUOTA DE MANEJO/i.test(desc) ? 'Cuota de manejo Tuya' : /^SEG/i.test(desc) ? 'Seguro deudores Tuya' : /^INTERES/i.test(desc) ? 'Intereses tarjeta Tuya' : merchant
       parsed = { ...base, kind: 'gasto', type: 'compra', merchant: label }
     } else if (/^PAGO/i.test(desc)) {
@@ -440,6 +444,11 @@ export function daviviendaCard(lines: string[]): { bank: string; items: Statemen
     if (m[5] === '-' || /^(PAGO|ABONO)/i.test(desc)) {
       // Pagar la tarjeta es pasar plata de tu cuenta a la tarjeta: no es gasto.
       items.push({ id, own: true, parsed: { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Pago a la tarjeta Davivienda' } })
+      continue
+    }
+    if (/AVANCE/i.test(desc)) {
+      // Un avance pasa plata de la tarjeta a tu cuenta: es deuda, no gasto.
+      items.push({ id, own: true, parsed: { ...base, kind: 'gasto', type: 'transferencia-enviada', merchant: 'Avance de la tarjeta Davivienda' } })
       continue
     }
     const label = /^INTERES(ES)? (DE )?MORA/i.test(desc) ? 'Intereses de mora tarjeta Davivienda'
