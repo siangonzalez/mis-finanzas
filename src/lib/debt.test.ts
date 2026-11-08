@@ -81,8 +81,13 @@ describe('pagos repetidos', () => {
     expect(alreadyPaid(payments, '2025-11-22', 2_000_000)).toBe(true)
   })
 
-  it('no confunde otro valor ni otro mes', () => {
-    expect(alreadyPaid(payments, '2025-10-27', 1_000_000)).toBe(false)
+  it('una parte de la cuota pagada desde otra cuenta ya está en la cuota del mes', () => {
+    expect(alreadyPaid(payments, '2025-10-27', 1_000_000)).toBe(true)
+    expect(alreadyPaid(payments, '2025-11-10', 1_000_000)).toBe(true)
+  })
+
+  it('no confunde un pago mayor ni otro mes', () => {
+    expect(alreadyPaid(payments, '2025-10-20', 3_000_000)).toBe(false)
     expect(alreadyPaid(payments, '2025-12-24', 2_000_000)).toBe(false)
   })
 })
