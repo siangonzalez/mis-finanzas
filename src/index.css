@@ -319,3 +319,12 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
   .month-picker span { min-width: 76px; }
   .month-picker button { width: 26px; height: 28px; }
 }
+
+.real-balance > .link + .link, .real-balance .real-gap + .link { margin-top: 2px; }
+.cuadre { list-style: none; margin: 4px 0 12px; padding: 0; }
+.cuadre li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.cuadre li > span { min-width: 0; }
+.cuadre li > b { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.cuadre li.strong { font-weight: 700; }
+.cuadre li.muted { color: var(--muted); font-size: 13px; }
+.cuadre-sign { display: inline-block; width: 16px; color: var(--muted); }

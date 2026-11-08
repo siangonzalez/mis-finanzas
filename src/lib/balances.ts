@@ -18,6 +18,18 @@ export interface Reconciliation {
   // porque no se sabe si pasó antes o después de que miraste el banco).
   now: number
   changeSince: number
+  // Para el cuadre paso a paso: lo que había en `since` (si se anotó) y lo
+  // registrado entre `since` y `date`.
+  start: number | null
+  flow: FlowBreakdown
+}
+
+export interface FlowBreakdown {
+  income: number // entró a tus cuentas
+  expenses: number // salió de tus cuentas
+  own: number // entre tus cuentas y pagos a tarjetas, neto (negativo si salió)
+  marked: number // "Ya pagué" que marcaste a mano
+  credit: number // compras con tarjeta de crédito: son gasto, pero no salen de tus cuentas
 }
 
 const MIN_GAP = 1_000 // menos de esto es redondeo o el 4x1000
@@ -26,20 +38,32 @@ const MIN_GAP = 1_000 // menos de esto es redondeo o el 4x1000
 // cuentas hasta que pagas la tarjeta.
 export const isCredit = (i: Pick<InboxItem, 'bank' | 'account'>) => i.bank === 'Tuya' || i.bank === 'Bancolombia TC' || /cr[eé]dito/i.test(i.account ?? '')
 
-// Cuánto cambiaron tus cuentas según lo registrado, de después de `from` hasta `to`.
-export function recordedFlow(from: string, to: string, movements: Movement[], inbox: InboxItem[], cards: CardRecord[]) {
+// Lo registrado de después de `from` hasta `to`, por partes.
+export function flowBreakdown(from: string, to: string, movements: Movement[], inbox: InboxItem[], cards: CardRecord[]): FlowBreakdown {
   const inRange = (d: string) => d > from && d <= to
   const creditIds = new Set(inbox.filter((i) => i.movementId && isCredit(i)).map((i) => i.movementId))
-  const moved = movements
-    .filter((m) => inRange(m.date) && !creditIds.has(m.id))
-    .reduce((s, m) => s + (m.kind === 'ingreso' ? m.amount : -m.amount), 0)
+  const mine = movements.filter((m) => inRange(m.date))
+  const sum = (l: Movement[]) => l.reduce((s, m) => s + m.amount, 0)
+  const cash = mine.filter((m) => !creditIds.has(m.id))
   // Lo que queda "entre tus cuentas" no es gasto, pero un pago a la tarjeta sí
   // sale de la cuenta. Entre Nequi y Bancolombia, entrada y salida se cancelan.
   const own = inbox
     .filter((i) => i.status === 'propia' && !i.deleted && inRange(i.date) && !isCredit(i))
     .reduce((s, i) => s + (i.kind === 'ingreso' ? i.amount : -i.amount), 0)
-  const marked = cards.reduce((s, c) => s + (c.manualPayment && inRange(c.manualPayment.date) ? c.manualPayment.amount : 0), 0)
-  return moved + own - marked
+  return {
+    income: sum(cash.filter((m) => m.kind === 'ingreso')),
+    expenses: sum(cash.filter((m) => m.kind === 'gasto')),
+    own,
+    marked: cards.reduce((s, c) => s + (c.manualPayment && inRange(c.manualPayment.date) ? c.manualPayment.amount : 0), 0),
+    credit: sum(mine.filter((m) => m.kind === 'gasto' && creditIds.has(m.id))),
+  }
+}
+
+export const netFlow = (f: FlowBreakdown) => f.income - f.expenses + f.own - f.marked
+
+// Cuánto cambiaron tus cuentas según lo registrado, de después de `from` hasta `to`.
+export function recordedFlow(from: string, to: string, movements: Movement[], inbox: InboxItem[], cards: CardRecord[]) {
+  return netFlow(flowBreakdown(from, to, movements, inbox, cards))
 }
 
 export function reconcile(entries: AccountBalance[], movements: Movement[], inbox: InboxItem[], cards: CardRecord[], today = ''): Reconciliation | null {
@@ -58,17 +82,22 @@ export function reconcile(entries: AccountBalance[], movements: Movement[], inbo
 
   let gap = 0
   let since: string
+  let start: number | null = null
+  let flow: FlowBreakdown
   const atLeast = dates.length < 2
   if (atLeast) {
     // Sin saldo anterior: si lo registrado este mes supera lo que hay, seguro falta algo.
     since = `${date.slice(0, 7)}-01`
-    gap = Math.min(0, total - recordedFlow(`${date.slice(0, 7)}-00`, date, movements, inbox, cards))
+    flow = flowBreakdown(`${date.slice(0, 7)}-00`, date, movements, inbox, cards)
+    gap = Math.min(0, total - netFlow(flow))
   } else {
     since = dates[dates.length - 2]
-    gap = total - (accounts.reduce((s, a) => s + at(a, since), 0) + recordedFlow(since, date, movements, inbox, cards))
+    start = accounts.reduce((s, a) => s + at(a, since), 0)
+    flow = flowBreakdown(since, date, movements, inbox, cards)
+    gap = total - (start + netFlow(flow))
   }
   const changeSince = today > date ? recordedFlow(date, today, movements, inbox, cards) : 0
-  return { total, date, accounts: latest, gap: Math.abs(gap) < MIN_GAP ? 0 : gap, since, atLeast, now: total + changeSince, changeSince }
+  return { total, date, accounts: latest, gap: Math.abs(gap) < MIN_GAP ? 0 : gap, since, atLeast, now: total + changeSince, changeSince, start, flow }
 }
 
 // Desde cuándo hacen falta movimientos para comparar.

@@ -108,3 +108,24 @@ describe('saldo de hoy', () => {
     expect(after?.gap).toBe(before?.gap)
   })
 })
+
+describe('cuadre paso a paso', () => {
+  it('con el saldo del inicio del mes, el cuadre es exacto y se ve por partes', () => {
+    const card = item({ id: 'tc', movementId: 'tc-mov', bank: 'Tuya' })
+    const r = reconcile(
+      [saldo('2026-10-31', 'Nequi', 200_000), saldo('2026-11-05', 'Nequi', 129_349)],
+      [income('2026-11-03', 500_000), mov('2026-11-04', 207_642), mov('2026-11-04', 50_000, { id: 'tc-mov' })],
+      [card, item({ id: 'pago', status: 'propia', amount: 80_000, date: '2026-11-04' })],
+      [],
+    )
+    expect(r?.start).toBe(200_000)
+    expect(r?.atLeast).toBe(false)
+    expect(r?.flow).toEqual({ income: 500_000, expenses: 207_642, own: -80_000, marked: 0, credit: 50_000 })
+    // 200.000 + 500.000 − 207.642 − 80.000 = 412.358; hay 129.349.
+    expect(r?.gap).toBe(-283_009)
+  })
+
+  it('sin saldo inicial no hay punto de partida', () => {
+    expect(reconcile([saldo('2026-11-05', 'Nequi', 1)], [], [], [])?.start).toBeNull()
+  })
+})
