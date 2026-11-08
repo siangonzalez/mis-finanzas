@@ -318,3 +318,43 @@ describe('extracto de cuenta de ahorros Davivienda', () => {
     expect(statementFromPdfLines(jan).items[1].parsed.date).toBe('2026-12-30')
   })
 })
+
+describe('extracto de tarjeta de crédito Davivienda', () => {
+  // Con el formato del extracto real; la compra y el pago son de ejemplo.
+  const lines = [
+    'Extracto septiembre',
+    'Periodo de facturación:',
+    '08/Ago/2026 - 08/Sep/2026',
+    '0000 **** **** 1234 Banco Davivienda S.A.',
+    'Información de pago Información de tarjeta',
+    'Fecha límite de pago',
+    '25/Sep/2026',
+    'Pago mínimo Pago total Cupo disponible Cupo disponible para avances',
+    '$51,322 $401,322 $8,598,678 $4,500,000',
+    'bt01 Pagar con cuentas bt02 Pagar con cuentas',
+    'Davivienda de otros bancos Cupo total Cupo total para avances',
+    '$9,000,000 $4,500,000',
+    'Detalle de movimientos del mes',
+    '02Sep2026 INTERES MORA C $1,322 0 de 0 $0 $1,322 $0 1939005 0.00',
+    '05Sep2026 MERCADO EL VECINO $400,000 1 de 12 $0 $33,333 $366,667 1939006 28.50',
+    '06Sep2026 PAGO PSE -$234,572 0 de 0 $0 -$234,572 $0 1939007 0.00',
+    'Banco Davivienda S.A.',
+  ]
+
+  it('lee el resumen de la tarjeta', () => {
+    const { card } = statementFromPdfLines(lines)
+    expect(card).toEqual({
+      id: 'davivienda-1234', bank: 'Davivienda', last4: '1234', cutDate: '2026-09-08', dueDate: '2026-09-25',
+      totalDebt: 401_322, minPayment: 51_322, available: 8_598_678, limit: 9_000_000, ea: 0.285,
+    })
+  })
+
+  it('las compras e intereses son gasto y el pago es entre tus cuentas', () => {
+    const { items } = statementFromPdfLines(lines)
+    expect(items.map((i) => [i.parsed.date, i.parsed.kind, i.parsed.amount, i.parsed.merchant, i.own, i.parsed.account])).toEqual([
+      ['2026-09-02', 'gasto', 1_322, 'Intereses de mora tarjeta Davivienda', false, 'T. Crédito *1234'],
+      ['2026-09-05', 'gasto', 400_000, 'MERCADO EL VECINO', false, 'T. Crédito *1234'],
+      ['2026-09-06', 'ingreso', 234_572, 'Pago a la tarjeta Davivienda', true, 'T. Crédito *1234'],
+    ])
+  })
+})

@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito y la cuenta de ahorros Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito, la cuenta de ahorros y la tarjeta Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -347,6 +347,73 @@ export function daviviendaLoanSummary(lines: string[]): CardSummary | null {
 }
 
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
+// ── Tarjeta de crédito Davivienda ─────────────────────────────────────────
+// "02Sep2026 INTERES MORA C $1,322 0 de 0 $0 $1,322 $0 1939005 0.00"
+// Columnas: fecha, descripción, valor, cuotas, intereses, valor a pagar,
+// saldo pendiente, número de transacción y tasa E.A. (coma para miles).
+const DAVIVIENDA_CARD_ROW = /^(\d{2})([A-Za-z]{3})(\d{4})\s+(.+?)\s+(-?)\$\s?([\d,]+(?:\.\d{1,2})?)\s+\d+ de \d+\s+-?\$[\d,.]+\s+-?\$[\d,.]+\s+-?\$[\d,.]+\s+\d+\s+([\d.]+)$/
+
+function daviviendaDate(raw: string) {
+  const m = raw.match(/(\d{2})\/?([A-Za-z]{3})\/?(\d{4})/)
+  return m ? isoFrom(m[1], m[2], m[3]) : ''
+}
+
+export function daviviendaCard(lines: string[]): { bank: string; items: StatementItem[]; card: CardSummary | null } {
+  const text = lines.join(' ')
+  const last4 = text.match(/\d{4} \*{4} \*{4} (\d{4})/)?.[1] ?? ''
+  const account = last4 ? `T. Crédito *${last4}` : 'T. Crédito'
+  const seen = new Map<string, number>()
+  const items: StatementItem[] = []
+  let ea = 0
+  for (const line of lines) {
+    const m = line.match(DAVIVIENDA_CARD_ROW)
+    if (!m) continue
+    const date = isoFrom(m[1], m[2], m[3])
+    const desc = m[4].trim()
+    const amount = parseAmount(m[6])
+    ea = Math.max(ea, Number(m[7]) / 100)
+    if (!date || amount < 1) continue
+    const base = { bank: 'Davivienda', role: 'movimiento' as const, amount, date, account }
+    const key = `${date}-${amount}-${desc.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
+    const n = (seen.get(key) ?? 0) + 1
+    seen.set(key, n)
+    const id = `extracto-davivienda-tc-${last4}-${key}-${n}`
+    if (m[5] === '-' || /^(PAGO|ABONO)/i.test(desc)) {
+      // Pagar la tarjeta es pasar plata de tu cuenta a la tarjeta: no es gasto.
+      items.push({ id, own: true, parsed: { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: 'Pago a la tarjeta Davivienda' } })
+      continue
+    }
+    const label = /^INTERES(ES)? (DE )?MORA/i.test(desc) ? 'Intereses de mora tarjeta Davivienda'
+      : /^INTERES/i.test(desc) ? 'Intereses tarjeta Davivienda'
+      : /CUOTA DE MANEJO/i.test(desc) ? 'Cuota de manejo Davivienda'
+      : desc
+    items.push({ id, own: false, parsed: { ...base, kind: 'gasto', type: 'compra', merchant: label } })
+  }
+
+  const money = (re: RegExp) => {
+    const m = text.match(re)
+    return m ? parseAmount(m[1]) : 0
+  }
+  const period = text.match(/Periodo de facturaci[oó]n:?\s*\S+\s*-\s*(\d{2}\/[A-Za-z]{3}\/\d{4})/i)
+  const due = text.match(/Fecha l[ií]mite de pago\s*(\d{2}\/[A-Za-z]{3}\/\d{4})/i)
+  // "$1,322 $1,322 $8,998,678 $4,500,000": pago mínimo, pago total, cupo disponible, cupo para avances.
+  const amounts = text.match(/Pago m[ií]nimo Pago total Cupo disponible.*?\$([\d,]+)\s+\$([\d,]+)\s+\$([\d,]+)/i)
+  const cutDate = period ? daviviendaDate(period[1]) : ''
+  const card: CardSummary | null = last4 && cutDate
+    ? {
+        id: `davivienda-${last4}`, bank: 'Davivienda', last4, cutDate,
+        totalDebt: amounts ? parseAmount(amounts[2]) : 0,
+        minPayment: amounts ? parseAmount(amounts[1]) : 0,
+        dueDate: '', available: amounts ? parseAmount(amounts[3]) : 0,
+        limit: money(/Cupo total Cupo total para avances\s*\$([\d,]+)/i) || money(/Cupo total\s*\$([\d,]+)/i),
+        ea,
+      }
+    : null
+  // Sin nada que pagar no hay fecha límite.
+  if (card && card.totalDebt >= 1) card.dueDate = due ? daviviendaDate(due[1]) : ''
+  return { bank: 'Davivienda', items, card }
+}
+
 // ── Cuenta de ahorros Davivienda ──────────────────────────────────────────
 // "02 10 $ 0.01 + 7927 Rendimientos Financieros PROCESOS EMPRESARIAL"
 // Columnas: día, mes, valor (punto decimal), + o −, documento (opcional), clase de movimiento y oficina.
@@ -410,7 +477,8 @@ export function statementFromPdfLines(lines: string[]): { bank: string; items: S
   if (/860\.034\.313|Banco Davivienda S\.?A/i.test(text)) {
     if (/Extracto Cr[eé]dito/i.test(text)) return { bank: 'Davivienda', items: [], card: daviviendaLoanSummary(lines) }
     if (/CUENTA DE AHORROS/i.test(text)) return daviviendaSavings(lines)
-    throw new Error('De Davivienda por ahora leo el extracto del crédito y el de la cuenta de ahorros, no el de la tarjeta. Mándame uno sin clave y lo agrego.')
+    if (/Periodo de facturaci[oó]n/i.test(text) && /\*{4} \*{4} \d{4}/.test(text)) return daviviendaCard(lines)
+    throw new Error('No reconocí este extracto de Davivienda. Leo el del crédito, la cuenta de ahorros y la tarjeta de crédito; mándame este sin clave y lo reviso.')
   }
   if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines), card: bancolombiaSummary(lines) }
   throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')
