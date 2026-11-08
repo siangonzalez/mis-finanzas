@@ -94,6 +94,12 @@ export function simulateDebt(t: DebtTerms, until: string): DebtSimulation {
   return sim
 }
 
+// ¿Ya está anotado este pago? Mismo valor con hasta una semana de diferencia:
+// el tablero anota la cuota el 25 y la transferencia puede salir el 22 o el 27.
+export function alreadyPaid(payments: DebtEvent[], date: string, amount: number) {
+  return payments.some((p) => p.amount === amount && Math.abs(Date.parse(p.date) - Date.parse(date)) <= 7 * 86_400_000)
+}
+
 // Cuotas atrasadas: las que han vencido desde el mes siguiente al primer
 // préstamo, menos las que se han pagado. Cada pago cuenta como las cuotas que
 // cubre, redondeando: uno de 4M con cuota de 2M son dos, uno de 1M (cuando la

@@ -1,5 +1,6 @@
 import { addDebtPayment, db, saveMovement, type InboxItem, type Rule } from '../data/db'
 import { syncDebts } from '../data/debtSync'
+import { alreadyPaid } from '../lib/debt'
 import { parseAlert, type ParsedAlert } from './parsers'
 import { merchantKey, suggestCategory } from './rules'
 
@@ -32,7 +33,11 @@ function isTwin(a: InboxItem, b: InboxItem) {
 
 async function toItem(id: string, source: InboxItem['source'], p: ParsedAlert, receivedAt: number): Promise<InboxItem> {
   const rules = (await db.rules.toArray()).filter((r) => !r.deleted)
-  const s = (await debtFor(p.merchant, p.kind, p.amount)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
+  // Lo que te presta alguien a quien le debes no es un ingreso tuyo: es un préstamo.
+  const lent = p.kind === 'ingreso' && (await lenderFor(p.merchant))
+  const s = lent
+    ? { category: 'Préstamos', subcategory: 'Préstamos' }
+    : (await debtFor(p.merchant, p.kind, p.amount)) ? { category: p.kind === 'gasto' ? 'Deudas' : 'Otros', subcategory: 'Otros' } : suggestCategory(p.merchant, p.kind, rules)
   return {
     id, source, bank: p.bank, role: p.role, kind: p.kind,
     date: p.date, time: p.time, amount: p.amount, merchant: p.merchant, account: p.account,
@@ -174,9 +179,18 @@ async function debtFor(merchant: string, kind: InboxItem['kind'], amount: number
   )
 }
 
+// Alguien a quien le debes (por ejemplo, "TRANSF DE JUAN OSMA" cuando Juan Camilo te presta).
+async function lenderFor(merchant: string) {
+  const upper = merchant.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return (await db.debts.toArray()).some((d) => d.direction === 'debo' && d.keywords.some((k) => k && upper.includes(k.toUpperCase())))
+}
+
 async function linkToDebt(item: InboxItem) {
   const debt = await debtFor(item.merchant, item.kind, item.amount)
   if (!debt) return
+  // Si ese pago ya está en la deuda (anotado a mano, en el tablero o desde otra
+  // alerta), no se cuenta otra vez.
+  if (alreadyPaid(debt.payments, item.date, item.amount)) return
   const id = `alerta-${item.id}`.replace(/[^A-Za-z0-9_\-.~:@+]/g, '-')
   await addDebtPayment(debt.id, { id, date: item.date, amount: item.amount, note: `Desde ${item.bank}`, source: 'alerta' })
   void syncDebts()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { overdueInstallments, payoffProjection, simulateDebt, type DebtTerms } from './debt'
+import { alreadyPaid, overdueInstallments, payoffProjection, simulateDebt, type DebtTerms } from './debt'
 
 // Números inventados: los datos reales de las deudas no van en el código.
 const base: DebtTerms = {
@@ -70,5 +70,19 @@ describe('cuotas', () => {
     const p = payoffProjection({ ...base, installment: 100_000 }, 1_000_000, '2025-01-10')
     expect(p.months).toBeGreaterThan(10)
     expect(p.months).toBeLessThan(13)
+  })
+})
+
+describe('pagos repetidos', () => {
+  const payments = [{ date: '2025-10-25', amount: 2_000_000 }, { date: '2025-11-25', amount: 2_000_000 }]
+
+  it('reconoce el mismo pago con unos días de diferencia', () => {
+    expect(alreadyPaid(payments, '2025-10-27', 2_000_000)).toBe(true)
+    expect(alreadyPaid(payments, '2025-11-22', 2_000_000)).toBe(true)
+  })
+
+  it('no confunde otro valor ni otro mes', () => {
+    expect(alreadyPaid(payments, '2025-10-27', 1_000_000)).toBe(false)
+    expect(alreadyPaid(payments, '2025-12-24', 2_000_000)).toBe(false)
   })
 })
