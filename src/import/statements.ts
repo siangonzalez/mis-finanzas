@@ -372,7 +372,7 @@ export function statementFromPdfLines(lines: string[]): { bank: string; items: S
   // Nequi va antes: sus extractos mencionan a Bancolombia y Davivienda en los pagos.
   if (/860\.034\.313|Banco Davivienda S\.?A/i.test(text)) {
     if (/Extracto Cr[eé]dito/i.test(text)) return { bank: 'Davivienda', items: [], card: daviviendaLoanSummary(lines) }
-    throw new Error('De Davivienda por ahora leo el extracto del crédito, no el de la tarjeta.')
+    throw new Error('De Davivienda por ahora leo solo el extracto del crédito, no el de tu cuenta ni el de la tarjeta. Mándame este sin clave y lo agrego.')
   }
   if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines), card: bancolombiaSummary(lines) }
   throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')
