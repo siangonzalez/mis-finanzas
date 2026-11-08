@@ -20,7 +20,7 @@ const MIN_GAP = 1_000 // menos de esto es redondeo o el 4x1000
 
 // Las compras con tarjeta de crédito son gasto, pero la plata no sale de tus
 // cuentas hasta que pagas la tarjeta.
-const isCredit = (i: Pick<InboxItem, 'bank' | 'account'>) => i.bank === 'Tuya' || i.bank === 'Bancolombia TC' || /cr[eé]dito/i.test(i.account ?? '')
+export const isCredit = (i: Pick<InboxItem, 'bank' | 'account'>) => i.bank === 'Tuya' || i.bank === 'Bancolombia TC' || /cr[eé]dito/i.test(i.account ?? '')
 
 // Cuánto cambiaron tus cuentas según lo registrado, de después de `from` hasta `to`.
 export function recordedFlow(from: string, to: string, movements: Movement[], inbox: InboxItem[], cards: CardRecord[]) {

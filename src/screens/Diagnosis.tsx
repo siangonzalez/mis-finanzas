@@ -1,20 +1,29 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { activeCards, activeReceivables, budgetsInMonth, db, movementsSince } from '../data/db'
+import { activeBalances, activeCards, activeReceivables, budgetsInMonth, db, movementsInYear, movementsSince } from '../data/db'
 import { loadRealBalance } from '../components/RealBalance'
+import { TaxCard } from '../components/TaxCard'
+import { taxYear } from '../lib/tax'
 import { diagnose, diagnosisStart, type Finding, type GoTo, type Tone } from '../lib/diagnosis'
 import { amountsHidden, currentMonth, money, monthLabel, todayISO } from '../lib/format'
 
 async function loadDiagnosis() {
-  return diagnose({
-    today: todayISO(),
+  const today = todayISO()
+  const inbox = (await db.inbox.toArray()).filter((i) => !i.deleted)
+  const receivables = await activeReceivables()
+  const year = Number(today.slice(0, 4))
+  const tax = taxYear({ year, today, movements: await movementsInYear(String(year)), inbox, balances: await activeBalances(), receivables })
+  const d = diagnose({
+    tax,
+    today,
     movements: await movementsSince(diagnosisStart()),
     budgets: await budgetsInMonth(currentMonth()),
     debts: await db.debts.toArray(),
     cards: await activeCards(),
-    inbox: (await db.inbox.toArray()).filter((i) => !i.deleted),
-    receivables: await activeReceivables(),
+    inbox,
+    receivables,
     real: await loadRealBalance(),
   })
+  return { ...d, tax }
 }
 
 const TONE_LABEL: Record<Tone, string> = { alerta: 'Urgente', atencion: 'Para revisar', info: 'Para tener en cuenta', bien: 'Va bien' }
@@ -100,6 +109,8 @@ export function Diagnosis({ onGo }: { onGo: (tab: GoTo) => void }) {
           </ul>
         </section>
       ))}
+
+      <TaxCard tax={d.tax} />
 
       <p className="muted small group-note">
         Este diagnóstico se calcula en tu dispositivo con lo que hay en la app. No conoce tus ahorros ni inversiones, solo los saldos que anotes, y no

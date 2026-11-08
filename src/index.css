@@ -305,6 +305,9 @@ code { background: var(--card-2); padding: 1px 6px; border-radius: 6px; font-siz
 .real-gap { margin: 6px 0 0; line-height: 1.45; color: var(--warn); }
 .real-gap .link { padding: 0; }
 
+.tax-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 14px; }
+.tax-list p { margin-top: 4px; }
+
 /* Teléfonos: que quepan el título, el mes, el ojo y Ajustes. */
 @media (max-width: 420px) {
   .topbar h1 { font-size: 18px; white-space: nowrap; }

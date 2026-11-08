@@ -1,5 +1,6 @@
 import type { Budget, CardRecord, Debt, InboxItem, Movement, Receivable } from '../data/db'
 import type { Reconciliation } from './balances'
+import type { TaxYear } from './tax'
 import { cardPaid } from './cards'
 import { overdueInstallments, payoffProjection, simulateDebt } from './debt'
 import { daysBetween, proposedPayments } from './receivables'
@@ -32,6 +33,7 @@ export interface DiagnosisInput {
   inbox: InboxItem[]
   receivables: Receivable[]
   real?: Reconciliation | null
+  tax?: TaxYear
 }
 
 export interface Diagnosis {
@@ -160,6 +162,15 @@ function debtLines({ cards, debts, inbox, today }: DiagnosisInput) {
 
 function dataFindings(input: DiagnosisInput, months: string[]): Finding[] {
   const out: Finding[] = []
+  const { tax } = input
+  if (tax && tax.status !== 'lejos') {
+    const top = [...tax.checks].sort((a, b) => b.estimated / b.limit - a.estimated / a.limit)[0]
+    out.push({
+      id: 'renta', tone: 'atencion', area: 'Renta',
+      title: tax.status === 'supera' ? `Tendrías que declarar renta por ${tax.year}` : `Estás cerca de un tope de renta para ${tax.year}`,
+      detail: `${top.label}: a este ritmo llegarías a ${money(top.estimated)} y el tope es ${money(top.limit)}. Mira el detalle en "Renta ${tax.year}", al final.`,
+    })
+  }
   const { real } = input
   if (real?.gap && daysBetween(real.date, input.today) <= 7) {
     const amount = money(Math.abs(real.gap))
