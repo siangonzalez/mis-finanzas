@@ -23,8 +23,11 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
   const statementRef = useRef<HTMLInputElement>(null)
   // PDF con contraseña: los archivos que faltan y la contraseña que escribes.
   // La contraseña vive solo en memoria mientras se leen los archivos.
-  const [needPassword, setNeedPassword] = useState<{ files: File[]; wrong: boolean } | null>(null)
+  const [needPassword, setNeedPassword] = useState<{ files: File[]; wrong: boolean; other: boolean } | null>(null)
   const [password, setPassword] = useState('')
+  // Las claves que escribiste en esta carga (cada banco puede tener la suya). Solo en memoria.
+  const passwords = useRef<string[]>([])
+  const askedFor = useRef<File | null>(null)
   const totals = useRef({ rows: 0, added: 0, own: 0, repeated: 0 })
   // Extractos que llegaron por correo y el que se está leyendo.
   const mailStatements = useLiveQuery(() => db.extractos.where('status').equals('pendiente').sortBy('date'), []) ?? []
@@ -56,14 +59,14 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     if (added) setPasted('')
   }
 
-  const readStatement = async (f: File, pass?: string) => {
+  const readStatement = async (f: File) => {
     const buf = await f.arrayBuffer()
-    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return statementFromPdfLines(await readPdfLines(buf, pass))
+    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') return statementFromPdfLines(await readPdfLines(buf, passwords.current))
     const rows = readNequiDocx(buf)
     return { bank: 'Nequi', items: statementItems(rows) }
   }
 
-  const loadStatements = async (files: File[], pass?: string) => {
+  const loadStatements = async (files: File[]) => {
     setBusy(true)
     setMessage('')
     const t = totals.current
@@ -71,10 +74,12 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
       for (let i = 0; i < files.length; i++) {
         let statement
         try {
-          statement = await readStatement(files[i], pass)
+          statement = await readStatement(files[i])
         } catch (e) {
           if (e instanceof PdfPasswordError) {
-            setNeedPassword({ files: files.slice(i), wrong: Boolean(pass) })
+            const again = askedFor.current === files[i]
+            askedFor.current = files[i]
+            setNeedPassword({ files: files.slice(i), wrong: again, other: !again && passwords.current.length > 0 })
             setPassword('')
             return
           }
@@ -91,6 +96,8 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
       }
       setNeedPassword(null)
       setPassword('')
+      passwords.current = []
+      askedFor.current = null
       if (reading.current.length) await db.extractos.where('id').anyOf(reading.current).modify({ status: 'leido' })
       reading.current = []
       const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`
@@ -103,6 +110,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No pude leer el extracto.')
       reading.current = []
+      passwords.current = []
+      askedFor.current = null
+      setNeedPassword(null)
       totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } finally {
       setBusy(false)
@@ -138,12 +148,16 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
             className="password-box"
             onSubmit={(e) => {
               e.preventDefault()
-              if (password) void loadStatements(needPassword.files, password)
+              if (!password) return
+              passwords.current = [...passwords.current, password]
+              void loadStatements(needPassword.files)
             }}
           >
             <span className="small">
-              {needPassword.wrong ? 'Esa contraseña no abre' : 'Escribe la contraseña de'} <b>{needPassword.files[0].name}</b>
-              {needPassword.wrong ? '. Prueba otra.' : ' (en Nequi suele ser tu número de cédula). Solo se usa para abrir el archivo aquí; no se guarda.'}
+              {needPassword.wrong ? 'Esa contraseña no abre' : needPassword.other ? 'Este archivo tiene otra contraseña:' : 'Escribe la contraseña de'} <b>{needPassword.files[0].name}</b>
+              {needPassword.wrong
+                ? '. Revisa mayúsculas y que sea la de ese banco (puntos y espacios no importan).'
+                : ' (en Nequi suele ser tu número de cédula). Solo se usa para abrir el archivo aquí; no se guarda.'}
             </span>
             <div className="row">
               <input className="settings-input" type="password" autoComplete="off" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -156,6 +170,8 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
                 setNeedPassword(null)
                 setPassword('')
                 reading.current = []
+                passwords.current = []
+                askedFor.current = null
                 totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
               }}
             >

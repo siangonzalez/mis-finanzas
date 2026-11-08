@@ -36,17 +36,29 @@ export function bitsToLines(bits: TextBit[]): string[] {
     .map((r) => r.bits.sort((a, b) => a.x - b.x).map((b) => b.str.trim()).join(' ').replace(/\s+/g, ' '))
 }
 
-export async function readPdfLines(file: ArrayBuffer, password?: string): Promise<string[]> {
+// La clave tal como la escribiste, sin espacios a los lados y, si es un
+// número, sin puntos ni guiones ("1.234.567" → "1234567").
+export function passwordVariants(passwords: string[]) {
+  const out = passwords.flatMap((p) => [p, p.trim(), /\d/.test(p) ? p.replace(/[\s.\-]/g, '') : ''])
+  return [...new Set(out.filter(Boolean))]
+}
+
+// Prueba cada clave que escribiste en esta carga: si cargas extractos de
+// varios bancos, cada archivo abre con la suya.
+export async function readPdfLines(file: ArrayBuffer, passwords: string[] = []): Promise<string[]> {
   const pdfjs = await loadPdfJs()
   let doc
-  try {
-    doc = await pdfjs.getDocument({ data: new Uint8Array(file), password }).promise
-  } catch (e) {
-    if ((e as { name?: string }).name === 'PasswordException') {
-      throw new PdfPasswordError((e as { code?: number }).code === pdfjs.PasswordResponses.INCORRECT_PASSWORD)
+  const attempts = [undefined, ...passwordVariants(passwords)]
+  for (let i = 0; i < attempts.length && !doc; i++) {
+    try {
+      // pdf.js se queda con los datos que recibe: cada intento lleva su copia.
+      doc = await pdfjs.getDocument({ data: new Uint8Array(file.slice(0)), password: attempts[i] }).promise
+    } catch (e) {
+      if ((e as { name?: string }).name !== 'PasswordException') throw new Error('No pude abrir el PDF.')
+      if (i === attempts.length - 1) throw new PdfPasswordError(passwords.length > 0)
     }
-    throw new Error('No pude abrir el PDF.')
   }
+  if (!doc) throw new PdfPasswordError(passwords.length > 0)
   const lines: string[] = []
   for (let p = 1; p <= doc.numPages; p++) {
     const content = await (await doc.getPage(p)).getTextContent()
