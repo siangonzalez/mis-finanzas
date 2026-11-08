@@ -358,3 +358,59 @@ describe('extracto de tarjeta de crédito Davivienda', () => {
     ])
   })
 })
+
+describe('extracto de cuenta de ahorros Bancolombia', () => {
+  // Filas con el formato real (nombres de personas cambiados).
+  const lines = [
+    'ESTADO DE CUENTA',
+    'DESDE: 2026/06/30 HASTA: 2026/09/30',
+    'CUENTA DE AHORROS',
+    'NÚMERO 0000001234',
+    'SALDO ACTUAL $ 2,575,230.08 RETEFUENTE $ .00',
+    'FECHA DESCRIPCIÓN SUCURSAL DCTO. VALOR SALDO',
+    '1/07 TRANSF DE PERSONA UNO 86,000.00 675,449.47',
+    '1/07 ABONO INTERESES AHORROS .79 675,450.26',
+    '1/07 TRANSFERENCIAS A NEQUI -10,000.00 665,450.26',
+    '1/07 COMPRA EN AUTOBOY AU -86,000.00 579,450.26',
+    '2/07 PAGO AUTOM TC AMEX PESOS ANTIGUO COUNTRY -422,959.20 128,991.06',
+    '4/07 PAGO PSE Compania de Financi -794,547.00 812,051.72',
+    '9/07 RETIRO CAJERO C.C CIUDAD TUNA -100,000.00 1,845,229.93',
+    '9/07 C MANEJO TARJ DEB 3162 07 26 -11,175.00 1,834,054.93',
+    '16/07 TRANSF A PERSONA DOS -40,000.00 290,102.36',
+    '17/07 TRANSFERENCIA TC SUC VIRTUAL 400,000.00 650,302.36',
+    '16/09 PAGO INTERBANC ZEBRA GROUP SAS 750,000.00 2,479,766.39',
+    'DCF:defensor@bancolombia.com.co;www.bancolombia.com/personas/defensor-financiero',
+  ]
+  const read = () => statementFromPdfLines(lines)
+
+  it('no se confunde con Nequi aunque mencione transferencias a Nequi', () => {
+    expect(read().bank).toBe('Bancolombia')
+  })
+
+  it('lee cada movimiento, sin los intereses, y separa lo que es entre tus cuentas', () => {
+    expect(read().items.map((i) => [i.parsed.date, i.parsed.kind, i.parsed.amount, i.parsed.merchant, i.parsed.type, i.own])).toEqual([
+      ['2026-07-01', 'ingreso', 86_000, 'PERSONA UNO', 'transferencia-recibida', false],
+      ['2026-07-01', 'gasto', 10_000, 'TRANSFERENCIAS A NEQUI', 'transferencia-enviada', true],
+      ['2026-07-01', 'gasto', 86_000, 'AUTOBOY AU', 'compra', false],
+      ['2026-07-02', 'gasto', 422_959, 'PAGO AUTOM TC AMEX PESOS ANTIGUO COUNTRY', 'pago', true],
+      ['2026-07-04', 'gasto', 794_547, 'Compania de Financi', 'pago', true],
+      ['2026-07-09', 'gasto', 100_000, 'RETIRO CAJERO C.C CIUDAD TUNA', 'retiro', false],
+      ['2026-07-09', 'gasto', 11_175, 'Cuota de manejo tarjeta débito Bancolombia', 'compra', false],
+      ['2026-07-16', 'gasto', 40_000, 'Transferencia a PERSONA DOS', 'transferencia-enviada', false],
+      ['2026-07-17', 'ingreso', 400_000, 'TRANSFERENCIA TC SUC VIRTUAL', 'transferencia-recibida', true],
+      ['2026-09-16', 'ingreso', 750_000, 'ZEBRA GROUP SAS', 'transferencia-recibida', false],
+    ])
+    expect(read().items[0].parsed.account).toBe('*1234')
+  })
+
+  it('muestra el saldo al cierre', () => {
+    expect(read().note).toMatch(/30\/09\/2026: \$2\.575\.230/)
+  })
+
+  it('un extracto de diciembre a febrero pone cada mes en su año', () => {
+    const dec = lines.map((l) => l.replace('DESDE: 2026/06/30 HASTA: 2026/09/30', 'DESDE: 2026/11/30 HASTA: 2027/02/28').replace('1/07 COMPRA', '1/12 COMPRA').replace('16/09', '16/01'))
+    const dates = statementFromPdfLines(dec).items.map((i) => i.parsed.date)
+    expect(dates).toContain('2026-12-01')
+    expect(dates).toContain('2027-01-16')
+  })
+})

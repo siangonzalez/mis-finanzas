@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito, la cuenta de ahorros y la tarjeta Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, la cuenta de ahorros Bancolombia, el crédito, la cuenta de ahorros y la tarjeta Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -347,6 +347,65 @@ export function daviviendaLoanSummary(lines: string[]): CardSummary | null {
 }
 
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
+// ── Cuenta de ahorros Bancolombia ─────────────────────────────────────────
+// "1/07 COMPRA EN AUTOBOY AU -86,000.00 579,450.26"
+// Columnas: día/mes, descripción (con sucursal y documento), valor con signo
+// y saldo, con coma para miles y punto decimal. El periodo puede ser de varios meses.
+const BANCOLOMBIA_SAVINGS_ROW = /^(\d{1,2})\/(\d{2})\s+(.+?)\s+(-?[\d,]*\.\d{2})\s+(-?[\d,]*\.\d{2})$/
+
+// Entre tus cuentas: Nequi, pagos y avances de tus tarjetas, y pagos a Tuya y Davivienda.
+const BANCOLOMBIA_OWN = /^(TRANSFERENCIAS A NEQUI|TRANSFERENCIA DESDE NEQUI|PAGO (AUTOM|SUC VIRT) TC|DEVOLUCION ABONO TC|TRANSFERENCIA TC SUC VIRTUAL|PAGO PSE (Compania de Financ|Banco Davivienda|Davivienda\b))/i
+
+function bancolombiaMerchant(desc: string, credit: boolean) {
+  const d = desc.replace(/\s+/g, ' ').trim()
+  if (/^C MANEJO TARJ DEB/i.test(d)) return 'Cuota de manejo tarjeta débito Bancolombia'
+  if (/^(COMIS|IVA COMIS)/i.test(d)) return `Comisión Bancolombia (${d.toLowerCase()})`
+  const to = d.match(/^TRANSF A (.+)$/i)
+  if (to) return `Transferencia a ${to[1]}`
+  const stripped = d.replace(/^(COMPRA EN|COMPRA INTL|PAGO QR|PAGO LLAVE|PAGO PSE|TRANSF DE|PAGO INTERBANC|PAGO DE PROV)\s+/i, '')
+  return stripped || (credit ? 'Ingreso Bancolombia' : 'Gasto Bancolombia')
+}
+
+export function bancolombiaSavings(lines: string[]): { bank: string; items: StatementItem[]; note: string } {
+  const text = lines.join(' ')
+  const period = text.match(/DESDE:\s*(\d{4})\/(\d{2})\/\d{2}\s+HASTA:\s*(\d{4})\/(\d{2})\/(\d{2})/i)
+  const [startYear, startMonth, endYear] = period ? [Number(period[1]), Number(period[2]), Number(period[3])] : [0, 0, new Date().getFullYear()]
+  const last4 = text.match(/N[ÚU]MERO\s+(\d{6,})/i)?.[1].slice(-4) ?? ''
+  const account = last4 ? `*${last4}` : 'Ahorros'
+  const seen = new Map<string, number>()
+  const items: StatementItem[] = []
+  for (const line of lines) {
+    const m = line.match(BANCOLOMBIA_SAVINGS_ROW)
+    if (!m) continue
+    const desc = m[3].trim()
+    // Los intereses de la cuenta son de centavos o pocos pesos al día: no se anotan.
+    if (/INTERES/i.test(desc)) continue
+    const value = parseAmount(m[4])
+    if (value < 1) continue
+    const month = Number(m[2])
+    // Un extracto de diciembre a febrero tiene meses de dos años.
+    const year = startYear && startYear < endYear && month >= startMonth ? startYear : endYear
+    const date = `${year}-${m[2]}-${m[1].padStart(2, '0')}`
+    const credit = !m[4].startsWith('-')
+    const merchant = bancolombiaMerchant(desc, credit)
+    const base = { bank: 'Bancolombia', role: 'movimiento' as const, amount: value, date, account, merchant }
+    const parsed: ParsedAlert = credit
+      ? { ...base, kind: 'ingreso', type: 'transferencia-recibida' }
+      : {
+          ...base, kind: 'gasto',
+          type: /^RETIRO/i.test(desc) ? 'retiro' : /^(TRANSF A|TRASLADO|TRANSFERENCIA)/i.test(desc) ? 'transferencia-enviada' : /^PAGO/i.test(desc) ? 'pago' : 'compra',
+        }
+    const key = `${date}-${value}-${desc.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
+    const n = (seen.get(key) ?? 0) + 1
+    seen.set(key, n)
+    items.push({ id: `extracto-bancolombia-${last4}-${key}-${n}`, parsed, own: BANCOLOMBIA_OWN.test(desc) })
+  }
+  const balance = text.match(/SALDO ACTUAL\s*\$\s?([\d,]*\.\d{2})/i)
+  const end = period ? `${period[5]}/${period[4]}/${period[3]}` : ''
+  const note = balance ? `Saldo de tu cuenta Bancolombia${end ? ` al ${end}` : ''}: $${parseAmount(balance[1]).toLocaleString('es-CO')}.` : ''
+  return { bank: 'Bancolombia', items, note }
+}
+
 // ── Tarjeta de crédito Davivienda ─────────────────────────────────────────
 // "02Sep2026 INTERES MORA C $1,322 0 de 0 $0 $1,322 $0 1939005 0.00"
 // Columnas: fecha, descripción, valor, cuotas, intereses, valor a pagar,
@@ -470,7 +529,9 @@ export function nuAccount(lines: string[]): { bank: string; items: StatementItem
 
 export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[]; card?: CardSummary | null; note?: string } {
   const text = lines.join(' ')
-  if (/901.658.107|Nu Colombia Compa/i.test(text)) return nuAccount(lines)
+  if (/901\.658\.107|Nu Colombia Compa/i.test(text)) return nuAccount(lines)
+  // Antes que Nequi: el extracto de la cuenta Bancolombia menciona "TRANSFERENCIAS A NEQUI".
+  if (/bancolombia/i.test(text) && /CUENTA DE AHORROS/i.test(text) && /ESTADO DE CUENTA/i.test(text)) return bancolombiaSavings(lines)
   if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines), card: tuyaSummary(lines) }
   if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
   // Nequi va antes: sus extractos mencionan a Bancolombia y Davivienda en los pagos.
