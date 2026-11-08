@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useRef, useState } from 'react'
 import { categoriesFor, findCategory } from '../data/categories'
-import { db, saveCardSummary, type InboxItem } from '../data/db'
-import { syncGmail, isGmailConfigured } from '../import/gmail'
+import { db, saveCardSummary, type InboxItem, type MailStatement } from '../data/db'
+import { syncGmail, isGmailConfigured, statementFiles } from '../import/gmail'
 import { accept, acceptAll, ignore, ingest, ingestStatement, restore, updateSuggestion } from '../import/inbox'
 import { PdfPasswordError, readPdfLines } from '../import/pdf'
 import { readNequiDocx, statementFromPdfLines, statementItems } from '../import/statements'
@@ -26,6 +26,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
   const [needPassword, setNeedPassword] = useState<{ files: File[]; wrong: boolean } | null>(null)
   const [password, setPassword] = useState('')
   const totals = useRef({ rows: 0, added: 0, own: 0, repeated: 0 })
+  // Extractos que llegaron por correo y el que se está leyendo.
+  const mailStatements = useLiveQuery(() => db.extractos.where('status').equals('pendiente').sortBy('date'), []) ?? []
+  const reading = useRef<string[]>([])
   const gmailReady = useLiveQuery(isGmailConfigured, [])
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -37,7 +40,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
     setMessage('')
     try {
       const r = await syncGmail()
-      setMessage(r.added ? `Encontré ${r.added} movimientos nuevos.` : `Revisé ${r.read} correos; no hay nada nuevo.`)
+      const alerts = r.added ? `Encontré ${r.added} movimientos nuevos.` : `Revisé ${r.read} correos; no hay alertas nuevas.`
+      const statements = r.statements ? ` Llegaron ${r.statements === 1 ? '1 extracto' : `${r.statements} extractos`}: léelos abajo.` : ''
+      setMessage(alerts + statements + (r.statementsError ? ` ${r.statementsError}` : ''))
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No se pudo sincronizar.')
     } finally {
@@ -73,7 +78,9 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
             setPassword('')
             return
           }
-          throw new Error(`${files[i].name}: ${e instanceof Error ? e.message : 'no pude leerlo.'}`)
+          // Errores del lector de Word o PDF ("invalid zip data"…): el archivo no es un extracto que la app conozca.
+          const why = e instanceof Error && !/zip|invalid pdf|unexpected/i.test(e.message) ? e.message : 'no parece un extracto que la app sepa leer.'
+          throw new Error(`${files[i].name}: ${why}`)
         }
         if ('card' in statement && statement.card) await saveCardSummary(statement.card)
         const res = await ingestStatement(statement.items)
@@ -84,6 +91,8 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
       }
       setNeedPassword(null)
       setPassword('')
+      if (reading.current.length) await db.extractos.where('id').anyOf(reading.current).modify({ status: 'leido' })
+      reading.current = []
       const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`
       setMessage(
         `Leí ${n(t.rows, 'movimiento', 'movimientos')}: ${n(t.added, 'nuevo', 'nuevos')} para revisar` +
@@ -93,6 +102,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
       totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No pude leer el extracto.')
+      reading.current = []
       totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } finally {
       setBusy(false)
@@ -145,6 +155,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
               onClick={() => {
                 setNeedPassword(null)
                 setPassword('')
+                reading.current = []
                 totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
               }}
             >
@@ -165,6 +176,29 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         />
         {message && <p className="pill">{message}</p>}
       </section>
+
+      {mailStatements.length > 0 && (
+        <section className="card">
+          <h3>Extractos que llegaron por correo</h3>
+          <p className="muted small">
+            Al leerlos, la app los compara con lo que ya tienes: lo que falta queda aquí para revisar y lo repetido no se cuenta
+            dos veces. Si el PDF tiene contraseña, la escribes tú aquí.
+          </p>
+          <ul className="list-plain mail-statements">
+            {mailStatements.map((s) => (
+              <MailStatementRow
+                key={s.id}
+                s={s}
+                busy={busy}
+                onRead={() => {
+                  reading.current = [s.id]
+                  void loadStatements(statementFiles(s))
+                }}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {pending.length > 0 ? (
         <>
@@ -239,6 +273,21 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         </section>
       )}
     </>
+  )
+}
+
+function MailStatementRow({ s, busy, onRead }: { s: MailStatement; busy: boolean; onRead: () => void }) {
+  return (
+    <li>
+      <span className="mv-text">
+        <b>{s.subject || s.files[0]?.name}</b>
+        <span className="small muted">{dayLabel(s.date.slice(0, 10))} · {s.from.replace(/<.*>/, '').trim() || s.from}</span>
+      </span>
+      <span className="head-actions">
+        <button className="link pos" disabled={busy} onClick={onRead}>Leer</button>
+        <button className="link" onClick={() => db.extractos.update(s.id, { status: 'descartado' })}>Descartar</button>
+      </span>
+    </li>
   )
 }
 

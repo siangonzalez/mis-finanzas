@@ -33,6 +33,12 @@ Solo responde cuando la app presenta tu clave secreta.
 
 Para agregar otro banco, súmalo a la lista `SENDERS` del script y crea una nueva versión de la misma forma. La app solo entiende los formatos que ya conoce; si llega otro, avísame con un ejemplo.
 
+### Extractos que llegan al correo
+
+Con el código nuevo del script, cada vez que la app revisa tu Gmail también trae los extractos que llegan como adjunto (PDF o Word, en correos que dicen "extracto" o "estado de cuenta"). La app revisa el correo sola al abrirla, si pasaron más de 3 horas, y con el botón **Revisar Gmail ahora**. Los extractos aparecen en **Revisar → Extractos que llegaron por correo**: tocas **Leer**, escribes la contraseña del PDF si la tiene, y la app agrega para revisar solo los movimientos que no tenías. La contraseña no se guarda.
+
+Para activarlo, pega el código nuevo y crea una **Nueva versión** de la implementación, como en "Actualizar el script". No pide permisos nuevos. Para probar, ejecuta `probarExtractos` y mira el registro.
+
 ### Recordatorios de pagos por correo
 
 El script te escribe a tu Gmail cada mañana (7 a. m., hora de Colombia) cuando una tarjeta, el crédito o la cuota de una deuda vence en 3 días, mañana u hoy, y cada 3 días mientras algo siga vencido. No te avisa lo que ya pagaste: usa los pagos que llegaron en tus alertas después de la fecha de corte y el **"Ya pagué"** que marques en Deudas.

@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, movementsInMonth, type Movement } from './data/db'
 import { handleDeepLink } from './import/deeplink'
 import { startAutoSync } from './data/sync'
+import { autoSyncGmail } from './import/gmail'
 import { amountsHidden, currentMonth, monthLabel, setAmountsHidden, shiftMonth } from './lib/format'
 import { Summary } from './screens/Summary'
 import { Movements } from './screens/Movements'
@@ -42,7 +43,9 @@ export default function App() {
   const [month, setMonth] = useState(currentMonth)
   const [editing, setEditing] = useState<Movement | 'new' | null>(null)
   const movements = useLiveQuery(() => movementsInMonth(month), [month])
-  const pendingCount = useLiveQuery(() => db.inbox.where('status').equals('pendiente').count(), []) ?? 0
+  const pendingCount =
+    (useLiveQuery(() => db.inbox.where('status').equals('pendiente').count(), []) ?? 0) +
+    (useLiveQuery(() => db.extractos.where('status').equals('pendiente').count(), []) ?? 0)
   const [toast, setToast] = useState('')
   const [hidden, setHidden] = useState(amountsHidden)
 
@@ -61,6 +64,7 @@ export default function App() {
   }
 
   useEffect(() => startAutoSync(), [])
+  useEffect(() => void autoSyncGmail(), [])
 
   useEffect(() => {
     const run = () =>

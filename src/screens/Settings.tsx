@@ -137,7 +137,7 @@ function GmailSettings() {
     await setSetting('gmail.token', token.trim())
     try {
       const r = await syncGmail()
-      setStatus(`Conectado. Leí ${r.read} correos y ${r.added} movimientos quedaron por revisar.`)
+      setStatus(`Conectado. Leí ${r.read} correos y ${r.added} movimientos quedaron por revisar.${r.statements ? ` Llegaron ${r.statements} extractos: léelos en Revisar.` : ''}`)
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'No se pudo conectar.')
     } finally {

@@ -3,7 +3,8 @@
  *
  * Corre dentro de TU cuenta de Google (script.google.com) y solo responde a la
  * app cuando la app presenta la clave secreta.
- *  - Gmail: busca las alertas de los bancos de abajo y devuelve su texto.
+ *  - Gmail: busca las alertas de los bancos de abajo y devuelve su texto, y
+ *    los extractos que llegan como adjunto (PDF o Word), para leerlos en la app.
  *  - Deudas: guarda las deudas y sus pagos en la hoja "Mis finanzas – Deudas"
  *    de tu Drive, para que el iPhone, el computador y el tablero de Claude
  *    vean lo mismo.
@@ -26,6 +27,9 @@ var SENDERS = [
 ];
 
 var MAX_MESSAGES = 300;
+// Extractos por respuesta (cada uno puede pesar un par de MB) y tamaño máximo de cada adjunto.
+var MAX_EXTRACTOS = 6;
+var MAX_ADJUNTO = 8 * 1024 * 1024;
 var SHEET_NAME = 'Mis finanzas – Deudas';
 var HEADERS = {
   deudas: ['id', 'nombre', 'direccion', 'palabras', 'cuota', 'dia', 'tasas'],
@@ -68,6 +72,8 @@ function doPost(e) {
       case 'gmail':
         var since = Number(body.since) || Date.now() - 60 * 86400000;
         return json({ ok: true, messages: buscar(since) });
+      case 'extractos':
+        return json(Object.assign({ ok: true }, extractos(Number(body.since) || Date.now() - 45 * 86400000, body.seen || [])));
       case 'debts.get':
         return json({ ok: true, debts: leerDeudas(), sheetUrl: libro().getUrl() });
       case 'debts.put':
@@ -122,6 +128,53 @@ function buscar(since) {
     }
   }
   return out;
+}
+
+/** Para probar desde el editor que el script encuentra tus extractos del último mes. */
+function probarExtractos() {
+  var r = extractos(Date.now() - 31 * 86400000, []);
+  Logger.log('Encontré ' + r.statements.length + ' extractos' + (r.more ? ' (y hay más)' : '') + '.');
+  r.statements.forEach(function (s) {
+    Logger.log(s.subject + ' · ' + s.files.map(function (f) { return f.name; }).join(', '));
+  });
+}
+
+// Correos con un PDF o Word adjunto que hablan de extracto o estado de cuenta.
+// Devuelve los archivos en base64; la app los lee y pide la contraseña si la tienen.
+function extractos(since, seen) {
+  var vistos = {};
+  seen.forEach(function (id) { vistos[id] = true; });
+  var query = 'has:attachment (filename:pdf OR filename:docx) (extracto OR "estado de cuenta" OR "estados de cuenta")' +
+    ' after:' + Math.floor(since / 1000) + ' -in:sent -in:spam -in:trash';
+  var threads = GmailApp.search(query, 0, 50);
+  var out = [];
+  var more = false;
+
+  for (var i = 0; i < threads.length && !more; i++) {
+    var messages = threads[i].getMessages();
+    for (var j = 0; j < messages.length; j++) {
+      var m = messages[j];
+      if (m.getDate().getTime() < since || vistos[m.getId()]) continue;
+      var files = m.getAttachments({ includeInlineImages: false }).filter(function (a) {
+        return /\.(pdf|docx)$/i.test(a.getName()) && a.getSize() <= MAX_ADJUNTO;
+      });
+      if (!files.length) continue;
+      if (out.length >= MAX_EXTRACTOS) {
+        more = true;
+        break;
+      }
+      out.push({
+        id: m.getId(),
+        date: m.getDate().toISOString(),
+        from: m.getFrom(),
+        subject: m.getSubject(),
+        files: files.map(function (a) {
+          return { name: a.getName(), mime: a.getContentType(), data: Utilities.base64Encode(a.getBytes()) };
+        }),
+      });
+    }
+  }
+  return { statements: out, more: more };
 }
 
 // ── Hoja de deudas ───────────────────────────────────────────────────────

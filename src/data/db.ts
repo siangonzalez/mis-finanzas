@@ -103,6 +103,18 @@ export interface AccountBalance extends Synced {
   amount: number
 }
 
+// Extracto que llegó a tu correo, esperando a que lo leas en Revisar (con la
+// contraseña del PDF, que escribes tú). No se sincroniza: cada dispositivo
+// lo descarga, y leerlo dos veces no repite movimientos.
+export interface MailStatement {
+  id: string // id del correo
+  date: string
+  from: string
+  subject: string
+  files: { name: string; mime: string; data: string }[] // archivos en base64
+  status: 'pendiente' | 'leido' | 'descartado'
+}
+
 export interface Debt extends DebtTerms {
   id: string
   name: string // con quién es la deuda
@@ -121,6 +133,7 @@ const db = new Dexie('finanzas') as Dexie & {
   cards: EntityTable<CardRecord, 'id'>
   cobros: EntityTable<Receivable, 'id'>
   saldos: EntityTable<AccountBalance, 'id'>
+  extractos: EntityTable<MailStatement, 'id'>
 }
 
 db.version(1).stores({
@@ -194,6 +207,8 @@ db.version(7)
 db.version(8)
   .stores({ saldos: 'id, date, updatedAt' })
   .upgrade((tx) => tx.table('settings').put({ key: 'sync.since', value: '0' }))
+
+db.version(9).stores({ extractos: 'id, status' })
 
 // Toda escritura marca la fecha del cambio, salvo cuando se está aplicando
 // lo que llega del otro dispositivo (que ya trae su propia fecha).

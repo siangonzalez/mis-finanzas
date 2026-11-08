@@ -11,6 +11,7 @@ En el iPhone, ábrela en Safari, toca Compartir y luego "Agregar a pantalla de i
 - **Diagnóstico** (se abre desde el Resumen): reglas fijas en `src/lib/diagnosis.ts`, calculadas en el dispositivo, sobre tus gastos, deudas, intereses, cuentas de cobro y presupuesto. Muestra hechos, cálculos y opciones; no dice en qué invertir ni reemplaza a un asesor.
 - **Saldo real** (en el Resumen): anotas cuánto hay en tus cuentas y la app te dice cuánto falta por registrar (`src/lib/balances.ts`). Las compras con tarjeta de crédito no cuentan como salida de tus cuentas.
 - **Renta del año** (al final del Diagnóstico): compara lo que llevas y lo estimado a diciembre con los topes de la DIAN para declarar (`src/lib/tax.ts`, la UVT de cada año se agrega a mano) y suma lo que te retuvieron en cuentas de cobro.
+- **Extractos del correo:** el script trae los extractos que llegan como adjunto; en Revisar los lees (con la contraseña del PDF, que no se guarda) y solo quedan para revisar los movimientos que faltaban.
 - **Ocultar montos:** el botón del ojo, arriba, cambia todos los valores por `$ ••••`. Se recuerda en cada dispositivo.
 - **Movimientos:** lista por día, filtros, búsqueda, editar y eliminar.
 - **Presupuesto:** monto por categoría, barra de avance y "copiar del mes anterior".
