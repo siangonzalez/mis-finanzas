@@ -145,7 +145,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         )}
         <div className="stack">
           <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>
-            {busy ? 'Leyendo…' : 'Cargar extracto (Nequi, Tuya, Bancolombia, Nu o crédito Davivienda)'}
+            {busy ? 'Leyendo…' : 'Cargar extracto (Nequi, Tuya, Bancolombia, Nu o Davivienda)'}
           </button>
         </div>
         {needPassword && (

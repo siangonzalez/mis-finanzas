@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito y la cuenta de ahorros Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -347,6 +347,43 @@ export function daviviendaLoanSummary(lines: string[]): CardSummary | null {
 }
 
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
+// ── Cuenta de ahorros Davivienda ──────────────────────────────────────────
+// "02 10 $ 0.01 + 7927 Rendimientos Financieros PROCESOS EMPRESARIAL"
+// Columnas: día, mes, valor (punto decimal), + o −, documento (opcional), clase de movimiento y oficina.
+const DAVIVIENDA_ROW = /^(\d{2})\s+(\d{2})\s+\$\s?([\d.,]+)\s+([+-])\s+(?:\d+\s+)?(.+)$/
+
+export function daviviendaSavings(lines: string[]): { bank: string; items: StatementItem[]; note: string } {
+  const text = lines.join(' ')
+  const report = text.match(/INFORME DEL MES:\s*([A-ZÁÉÍÓÚ]+)\s*\/\s*(\d{4})/i)
+  const reportMonth = report ? MONTHS.indexOf(report[1].toLowerCase()) + 1 : 0
+  const reportYear = report ? Number(report[2]) : new Date().getFullYear()
+  const last4 = text.match(/CUENTA DE AHORROS\s+([\d ]{8,})/i)?.[1].replace(/\D/g, '').slice(-4) ?? ''
+  const account = last4 ? `*${last4}` : 'Ahorros'
+  const seen = new Map<string, number>()
+  const items: StatementItem[] = []
+  for (const line of lines) {
+    const m = line.match(DAVIVIENDA_ROW)
+    if (!m) continue
+    const amount = parseAmount(m[3])
+    if (amount < 1) continue // los rendimientos de centavos no son un movimiento
+    // En el extracto de enero pueden venir días de diciembre del año anterior.
+    const year = reportMonth && Number(m[2]) > reportMonth ? reportYear - 1 : reportYear
+    const date = `${year}-${m[2]}-${m[1]}`
+    const desc = m[5].trim()
+    const base = { bank: 'Davivienda', role: 'movimiento' as const, amount, date, account }
+    const parsed: ParsedAlert = m[4] === '+'
+      ? { ...base, kind: 'ingreso', type: 'transferencia-recibida', merchant: desc }
+      : { ...base, kind: 'gasto', type: /RETIRO/i.test(desc) ? 'retiro' : /PAGO/i.test(desc) ? 'pago' : /TRANSF/i.test(desc) ? 'transferencia-enviada' : 'compra', merchant: desc }
+    const key = `${date}-${amount}-${desc.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
+    const n = (seen.get(key) ?? 0) + 1
+    seen.set(key, n)
+    items.push({ id: `extracto-davivienda-${last4}-${key}-${n}`, parsed, own: false })
+  }
+  const balance = text.match(/Nuevo Saldo\s*\$\s?([\d.,]+)/i)
+  const note = balance ? `Saldo de tu cuenta Davivienda al cierre del mes: $${parseAmount(balance[1]).toLocaleString('es-CO')}.` : ''
+  return { bank: 'Davivienda', items, note }
+}
+
 // Cuenta Nu (de ahorros). Por ahora solo se conocen extractos de meses sin
 // movimientos: de esos se toma el saldo final, como dato para ti.
 export function nuAccount(lines: string[]): { bank: string; items: StatementItem[]; note: string } {
@@ -372,7 +409,8 @@ export function statementFromPdfLines(lines: string[]): { bank: string; items: S
   // Nequi va antes: sus extractos mencionan a Bancolombia y Davivienda en los pagos.
   if (/860\.034\.313|Banco Davivienda S\.?A/i.test(text)) {
     if (/Extracto Cr[eé]dito/i.test(text)) return { bank: 'Davivienda', items: [], card: daviviendaLoanSummary(lines) }
-    throw new Error('De Davivienda por ahora leo solo el extracto del crédito, no el de tu cuenta ni el de la tarjeta. Mándame este sin clave y lo agrego.')
+    if (/CUENTA DE AHORROS/i.test(text)) return daviviendaSavings(lines)
+    throw new Error('De Davivienda por ahora leo el extracto del crédito y el de la cuenta de ahorros, no el de la tarjeta. Mándame uno sin clave y lo agrego.')
   }
   if (/890\.903\.938|bancolombia\.com/i.test(text)) return { bank: 'Bancolombia', items: bancolombiaCardItems(lines), card: bancolombiaSummary(lines) }
   throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')

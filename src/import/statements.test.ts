@@ -287,3 +287,34 @@ describe('extracto de la Cuenta Nu', () => {
     expect(() => statementFromPdfLines(lines.slice(0, -1))).toThrow(/tiene movimientos/)
   })
 })
+
+describe('extracto de cuenta de ahorros Davivienda', () => {
+  // Encabezado y primera fila como los lee la app del extracto real; las demás filas son de ejemplo.
+  const lines = [
+    'CUENTA DE AHORROS',
+    '0000 0000 1234',
+    'INFORME DEL MES: OCTUBRE /2026',
+    'Nuevo Saldo $1,250,000.50',
+    'EXTRACTO CUENTA DE AHORROS',
+    'Fecha Valor Doc. Clase de Movimiento Oficina',
+    '02 10 $ 0.01 + 7927 Rendimientos Financieros PROCESOS EMPRESARIAL',
+    '05 10 $ 1,500,000.00 + 1234 Transferencia Recibida PORTAL PYME',
+    '07 10 $ 250,000.00 - Retiro Cajero CAJERO CALLE 72',
+    'Banco Davivienda S.A NIT.860.034.313-7',
+  ]
+
+  it('lee los movimientos con punto decimal y omite los centavos de rendimientos', () => {
+    const { bank, items, note } = statementFromPdfLines(lines)
+    expect(bank).toBe('Davivienda')
+    expect(items.map((i) => [i.parsed.date, i.parsed.kind, i.parsed.amount, i.parsed.type, i.parsed.account])).toEqual([
+      ['2026-10-05', 'ingreso', 1_500_000, 'transferencia-recibida', '*1234'],
+      ['2026-10-07', 'gasto', 250_000, 'retiro', '*1234'],
+    ])
+    expect(note).toMatch(/1\.250\.001/)
+  })
+
+  it('en el extracto de enero, los días de diciembre son del año anterior', () => {
+    const jan = lines.map((l) => l.replace('OCTUBRE /2026', 'ENERO /2027').replace('07 10', '30 12'))
+    expect(statementFromPdfLines(jan).items[1].parsed.date).toBe('2026-12-30')
+  })
+})
