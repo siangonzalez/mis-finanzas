@@ -260,3 +260,30 @@ describe('extracto de crédito Davivienda', () => {
     expect(bank).toBe('Nequi')
   })
 })
+
+describe('extracto de la Cuenta Nu', () => {
+  // Líneas como las lee la app del extracto real de octubre (sin datos personales).
+  const lines = [
+    'Llegó tu extracto de Octubre',
+    'Nu Placa Número de Cuenta Período',
+    'XXX000 00000000 01 - 31 OCT 2026',
+    'Dinero en tu Cuenta Nu',
+    'Tu dinero a final del mes $12.345,67',
+    'Nu Colombia Compañía de Financiamiento S.A.',
+    'NIT 901.658.107-2',
+    'Movimientos',
+    'No hiciste movimientos con tu Cuenta Nu este mes',
+  ]
+
+  it('reconoce un mes sin movimientos y muestra el saldo final', () => {
+    const s = statementFromPdfLines(lines)
+    expect(s.bank).toBe('Nu')
+    expect(s.items).toEqual([])
+    expect(s.note).toMatch(/31 (de )?oct/)
+    expect(s.note).toMatch(/12\.346/)
+  })
+
+  it('avisa si trae movimientos, que todavía no sabe leer', () => {
+    expect(() => statementFromPdfLines(lines.slice(0, -1))).toThrow(/tiene movimientos/)
+  })
+})

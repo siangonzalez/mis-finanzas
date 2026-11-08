@@ -49,7 +49,7 @@ export function rowsFromDocumentXml(xml: string): StatementRow[] {
 // Si la descripción ocupa dos líneas, la segunda se pega a la anterior.
 export function rowsFromStatementLines(lines: string[]): StatementRow[] {
   if (!lines.some((l) => /dep[oó]sito de bajo monto|NEQUI/i.test(l))) {
-    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia y el crédito Davivienda. Mándame un ejemplo de este banco y lo agrego.')
+    throw new Error('Por ahora leo extractos de Nequi, Tuya, las tarjetas Bancolombia, el crédito Davivienda y la Cuenta Nu sin movimientos. Mándame un ejemplo de este banco y lo agrego.')
   }
   const rows: StatementRow[] = []
   const re = /^(\d{2})\/(\d{2})\/(\d{4})\s+(.*?)\s*(\$\s?-?[\d,]+\.\d{2})\s+(\$\s?-?[\d,]+\.\d{2})$/
@@ -347,8 +347,26 @@ export function daviviendaLoanSummary(lines: string[]): CardSummary | null {
 }
 
 // Decide qué banco es por el texto del PDF y devuelve sus movimientos.
-export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[]; card?: CardSummary | null } {
+// Cuenta Nu (de ahorros). Por ahora solo se conocen extractos de meses sin
+// movimientos: de esos se toma el saldo final, como dato para ti.
+export function nuAccount(lines: string[]): { bank: string; items: StatementItem[]; note: string } {
   const text = lines.join(' ')
+  if (!/Cuenta Nu/i.test(text)) throw new Error('De Nu por ahora leo el extracto de la Cuenta Nu, no el de la tarjeta. Mándame uno y lo agrego.')
+  if (!/No hiciste movimientos/i.test(text)) {
+    throw new Error('Este extracto de la Cuenta Nu tiene movimientos y todavía no sé leerlos. Mándame uno sin clave y lo agrego.')
+  }
+  const period = text.match(/\d{1,2}\s*-\s*(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{4})/)
+  const end = period ? isoFrom(period[1], period[2], period[3]) : ''
+  const balance = text.match(/Tu dinero a final del mes\s*\$?\s*([\d.,]+)/i)
+  const amount = balance ? parseAmount(balance[1]) : 0
+  const [y, m, d] = end.split('-').map(Number)
+  const when = end ? ` al ${new Date(y, m - 1, d).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}` : ''
+  return { bank: 'Nu', items: [], note: `Cuenta Nu sin movimientos ese mes; saldo${when}: $${amount.toLocaleString('es-CO')}.` }
+}
+
+export function statementFromPdfLines(lines: string[]): { bank: string; items: StatementItem[]; card?: CardSummary | null; note?: string } {
+  const text = lines.join(' ')
+  if (/901.658.107|Nu Colombia Compa/i.test(text)) return nuAccount(lines)
   if (/TUYA S\.?A|tuya\.com\.co|Mastercard Carulla/i.test(text)) return { bank: 'Tuya', items: tuyaItems(lines), card: tuyaSummary(lines) }
   if (/dep[oó]sito de bajo monto|NEQUI/i.test(text)) return { bank: 'Nequi', items: statementItems(rowsFromStatementLines(lines)) }
   // Nequi va antes: sus extractos mencionan a Bancolombia y Davivienda en los pagos.

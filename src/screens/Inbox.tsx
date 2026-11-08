@@ -29,6 +29,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
   const passwords = useRef<string[]>([])
   const askedFor = useRef<File | null>(null)
   const totals = useRef({ rows: 0, added: 0, own: 0, repeated: 0 })
+  const notes = useRef<string[]>([])
   // Extractos que llegaron por correo y el que se está leyendo.
   const mailStatements = useLiveQuery(() => db.extractos.where('status').equals('pendiente').sortBy('date'), []) ?? []
   const reading = useRef<string[]>([])
@@ -88,6 +89,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
           throw new Error(`${files[i].name}: ${why}`)
         }
         if ('card' in statement && statement.card) await saveCardSummary(statement.card)
+        if ('note' in statement && statement.note) notes.current.push(statement.note)
         const res = await ingestStatement(statement.items)
         t.rows += statement.items.length
         t.added += res.added
@@ -104,11 +106,14 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
       setMessage(
         `Leí ${n(t.rows, 'movimiento', 'movimientos')}: ${n(t.added, 'nuevo', 'nuevos')} para revisar` +
           (t.repeated ? `, ${t.repeated} que ya tenías por correo` : '') +
-          (t.own ? ` y ${t.own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.',
+          (t.own ? ` y ${t.own} entre tus cuentas (no cuentan como gasto ni ingreso)` : '') + '.' +
+          (notes.current.length ? ` ${notes.current.join(' ')}` : ''),
       )
+      notes.current = []
       totals.current = { rows: 0, added: 0, own: 0, repeated: 0 }
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No pude leer el extracto.')
+      notes.current = []
       reading.current = []
       passwords.current = []
       askedFor.current = null
@@ -140,7 +145,7 @@ export function Inbox({ onGoToSettings }: { onGoToSettings: () => void }) {
         )}
         <div className="stack">
           <button className="ghost" disabled={busy} onClick={() => statementRef.current?.click()}>
-            {busy ? 'Leyendo…' : 'Cargar extracto (Nequi, Tuya, Bancolombia o crédito Davivienda)'}
+            {busy ? 'Leyendo…' : 'Cargar extracto (Nequi, Tuya, Bancolombia, Nu o crédito Davivienda)'}
           </button>
         </div>
         {needPassword && (
